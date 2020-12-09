@@ -40,11 +40,6 @@ datos segment
    
     stringToWrite db '  b12        n32', 0AH ;   
 
-    Matriz db 64 dup(2)
-    ; 0 - Blanco
-    ; 1 - Negro
-    ; 2 - Vacio :c
-
     ; Formato archivo:
     ;    Othelo Juego
     ;Blancas     Negras
@@ -52,6 +47,13 @@ datos segment
     ;  ...        ...
     ;2 espacios, 3 letras, 8 espacios, 3 letras, 1 salto linea = 17 
 
+    ; Matriz
+    ; 0 - Blanco
+    ; 1 - Negro
+    ; 2 - Vacio :c
+    Matriz db 64 dup(2)
+
+    toPlay dw 00h
 
 datos ends
 
@@ -513,13 +515,15 @@ pDrawCirclePoints proc
     JDRAWPIXELMACRO POINT0_X, POINT0_Y, black
 
     ; Se dibuja (-x0, y0)
+    push POINT0_X
     mov ax, POINT1_X
     mov bx, POINT0_X
 
     GETNEGPOINT
+    mov POINT0_X, bx 
 
     JDRAWPIXELMACRO bx, POINT0_Y, black
-
+    pop POINT0_X
     ; Se dibuja (x0, -y0)
     mov ax, POINT1_Y
     mov bx, POINT0_Y
