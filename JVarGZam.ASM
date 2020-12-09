@@ -31,6 +31,8 @@ datos segment
 
     CURSOR dw 00
 
+    C_COLOR db white
+
     handleax dw ? ; handler auxiliar
     handleRW dw ? ; hanlder de lectura escritura
 
@@ -51,7 +53,7 @@ datos segment
     ; 0 - Blanco
     ; 1 - Negro
     ; 2 - Vacio :c
-    Matriz db 64 dup(2)
+    Matriz db 0, 2, 1, 1, 60 dup(2)
 
     toPlay dw 00h
 
@@ -411,86 +413,74 @@ pDrawBlock endP
 ; D: Dibuja un circulo basado en un centro y su radio
 pDrawCircle proc
     ; Declaracion de variables
-    pDrawCircle_p equ word ptr [bp-2]
-    pDrawCircle_r equ word ptr [bp-4]
+    pDrawCircle_err equ word ptr [bp-2]
+    pDrawCircle_x equ word ptr [bp-4]
+    pDrawCircle_y equ word ptr [bp-6]
 
     ; Se reserva memoria para las variables
     push bp
     mov bp, sp
-    sub bp, 6
+    sub bp, 8
 
     PUSHS <ax, bx, cx, dx>
     PUSHS <POINT0_X, POINT0_Y, POINT1_X, POINT1_Y>
 
-    ; Inicializacion de variables locales
-    ; r = CX
-    mov pDrawCircle_r, cx
+    ; Inicializamos las variables
+    ; x = radius
+    mov pDrawCircle_x, cx
 
-    ; p = 1 - r
-    mov pDrawCircle_p, 1
-    mov ax, pDrawCircle_r
-    sub pDrawCircle_p, ax
+    ; y = 0
+    mov pDrawCircle_y, 0 
 
-    ; Logica del procedimiento
-    MOVV POINT0_X, POINT1_X
-    MOVV POINT0_Y, POINT1_Y
+    ; err = 0
+    mov pDrawCircle_err, 0
 
-    mov ax, pDrawCircle_r
-    ;add POINT0_X, ax
-    sub POINT0_Y, ax
-
-    ; Ciclo para dibujar el circulo
+    ; Logica del algoritmo
     pDrawCircle_draw:
-        inc POINT0_X
+        ; Si x0 < y0 termina el loop
+        mov ax, pDrawCircle_x
+        mov bx, pDrawCircle_y
+        jmpifl ax, bx, pDrawCircle_end
 
-        mov ax, pDrawCircle_p
-        jmpifns ax, pDrawCircle_pPos
-            ; Se dibujan los circulos
-            call pDrawCirclePoints
+        ; POINT0 = POINT1
+        MOVV POINT0_X, POINT1_X
+        MOVV POINT0_Y, POINT1_Y
 
-            ; p += 2x + 3
+        ; Agregamos los puntos relativos
+        add POINT0_X, ax
+        add POINT0_Y, bx
+
+        call pDrawCirclePoints
+
+        ; si err <= 0
+        mov ax, pDrawCircle_err
+        jmpif ax, 0, pDrawCircle_zero
+        jmpifns ax, pDrawCircle_ErrNotSigned
+        pDrawCircle_zero:
+            inc pDrawCircle_y
+            
+            ; err += 2y + 1
             CLEAN <dx>
-            mov ax, POINT0_X
-            mov bx, 2
+            MULTCONSIG 2, pDrawCircle_y
 
-            mul bx
+            add pDrawCircle_err, ax
 
-            add ax, 3
+            inc pDrawCircle_err
 
-            add pDrawCircle_p, ax
-            jmp pDrawCircle_pEnd
-        pDrawCircle_pPos:
-            dec POINT0_Y
-
-            ; Se empiezan a dibujar los circulos
-            call pDrawCirclePoints
-
-            ; p += 2x - 2y + 5
+            jmp pDrawCircle_ErrEnd
+        ; si err > 0
+        pDrawCircle_ErrNotSigned:
+            dec pDrawCircle_x
+            
+            ; err -= 2x + 1
             CLEAN <dx>
-            mov ax, POINT0_X
-            mov bx, 2
+            MULTCONSIG 2, pDrawCircle_x
 
-            mul bx
+            sub pDrawCircle_err, ax
 
-            mov cx, ax
+            dec pDrawCircle_err
 
-            CLEAN <dx>
-            mov ax, POINT0_Y
-            mov bx, 2
-
-            mul bx
-
-            add ax, 5
-            add ax, cx
-
-            add pDrawCircle_p, bx
-
-        pDrawCircle_pEnd:
-
-        mov ax, POINT0_X
-        mov bx, POINT0_Y
-
-        JMPIFGE ax, bx, pDrawCircle_end
+        pDrawCircle_ErrEnd:
 
     jmp pDrawCircle_draw
     pDrawCircle_end:
@@ -509,10 +499,13 @@ pDrawCircle endP
 ; D: Dibuja los puntos basados en el algoritmo mid point circle
 ;    Se toma como centro de referencia a POINT1
 pDrawCirclePoints proc
-    PUSHS <ax, bx>
+    PUSHS <ax, bx, cx, dx>
+    PUSHS <POINT0_X, POINT0_Y>
+
+    JDRAWPIXELMACRO POINT1_X, POINT1_Y, red
 
     ; Se dibuja (x0, y0)
-    JDRAWPIXELMACRO POINT0_X, POINT0_Y, black
+    JDRAWPIXELMACRO POINT0_X, POINT0_Y, C_COLOR
 
     ; Se dibuja (-x0, y0)
     push POINT0_X
@@ -522,75 +515,136 @@ pDrawCirclePoints proc
     GETNEGPOINT
     mov POINT0_X, bx 
 
-    JDRAWPIXELMACRO bx, POINT0_Y, black
+    JDRAWPIXELMACRO POINT0_X, POINT0_Y, C_COLOR
     pop POINT0_X
+
     ; Se dibuja (x0, -y0)
+    push POINT0_Y
     mov ax, POINT1_Y
     mov bx, POINT0_Y
 
     GETNEGPOINT
 
-    JDRAWPIXELMACRO POINT0_X, bx, black
+    mov POINT0_Y, bx
+
+    JDRAWPIXELMACRO POINT0_X, POINT0_Y, C_COLOR
+    pop POINT0_Y
 
     ; Se dibuja (-x0, -y0)
     ; ax = -x0 : bx = -y0
+    PUSHS <POINT0_X, POINT0_Y>
     mov ax, POINT1_Y
     mov bx, POINT0_Y
 
     GETNEGPOINT
-    push bx
+
+    mov POINT0_Y, bx
 
     mov ax, POINT1_X
     mov bx, POINT0_X
 
     GETNEGPOINT
 
-    mov ax, bx
-    pop bx
+    mov POINT0_X, bx
 
-    JDRAWPIXELMACRO ax, bx, black
+    JDRAWPIXELMACRO POINT0_X, POINT0_Y, C_COLOR
+    POPS <POINT0_Y, POINT0_X>
+
+    ; Se voltean los puntos iniciales con respecto al origen POINT1
+    ; no se pueden simplemente voltear (x, y) a (y, x)
+    ; porque el punto origen es distinto para todos
+    mov ax, POINT1_X
+    mov bx, POINT0_X
+
+    GETDISTANCE
+
+    mov dx, cx
+
+    mov ax, POINT1_Y
+    mov bx, POINT0_Y
+
+    GETDISTANCE
+
+    ; cx = y con respecto al origen
+    ; dx = x con respecto al origen
+    MOVV POINT0_X, POINT1_X
+    MOVV POINT0_Y, POINT1_Y
+
+    add POINT0_X, cx
+    add POINT0_Y, dx
 
     ; Se dibuja (y0, x0)
-    JDRAWPIXELMACRO POINT0_Y, POINT0_X, black
+    JDRAWPIXELMACRO POINT0_X, POINT0_Y, C_COLOR
 
-    ; Se dibuja (-y0, x0)
+
+    push POINT0_Y
     mov ax, POINT1_Y
     mov bx, POINT0_Y
 
     GETNEGPOINT
 
-    JDRAWPIXELMACRO bx, POINT0_X, black
+    mov POINT0_Y, bx
+
+    JDRAWPIXELMACRO POINT0_X, POINT0_Y, C_COLOR
+    pop POINT0_Y
 
     ; Se dibuja (y0, -x0)
+    push POINT0_X
     mov ax, POINT1_X
     mov bx, POINT0_X
 
     GETNEGPOINT
 
-    JDRAWPIXELMACRO POINT0_Y, bx, black
+    mov POINT0_X, bx
 
+    JDRAWPIXELMACRO POINT0_X, POINT0_Y, C_COLOR
+
+    pop POINT0_X
     ; Se dibuja (-y0, -x0)
     ; bx = -y0 : ax = -x0
     mov ax, POINT1_Y
     mov bx, POINT0_Y
 
     GETNEGPOINT
-    push bx
+
+    mov POINT0_Y, bx
 
     mov ax, POINT1_X
     mov bx, POINT0_X
 
     GETNEGPOINT
 
-    mov ax, bx
-    pop bx
+    mov POINT0_X, bx
 
-    JDRAWPIXELMACRO bx, ax, black
+    JDRAWPIXELMACRO POINT0_X, POINT0_Y, C_COLOR
 
-    POPS <bx, ax>
+    POPS <POINT0_Y, POINT0_X>
+    POPS <dx, cx, bx, ax>
 
     ret
 pDrawCirclePoints endP
+
+; E: El punto central del circulo en POINT1
+; S: N/A
+; D: Dibuja un circulo relleno en POINT1_X, POINT1_Y, de radio 10
+pDrawFullCircle proc 
+    push cx
+    mov cx, COINS_RADIUS
+
+    pDrawCoins_draw:
+        MOVV POINT1_X, POINT0_X
+        MOVV POINT1_Y, POINT0_Y
+        
+        PUSHS <POINT0_X, POINT0_Y, POINT1_X, POINT1_Y>
+        call pDrawCircle
+        POPS <POINT1_Y, POINT1_X, POINT0_Y, POINT0_X>
+
+    loop pDrawCoins_draw
+
+    pop cx
+    
+    ret
+pDrawFullCircle endP
 
 ; E/S : N/A
 ; D: Se encarga de dibujar la base del tablero
@@ -642,6 +696,54 @@ pDrawBoard proc
 
     ret
 pDrawBoard endP
+
+; E: La matriz
+; S: N/A
+; D: Se encarga de dibujar la matriz
+pDrawCoins proc
+    pushs <ax, bx, cx, dx, di>
+
+    mov cx, 64
+    mov dx, 0
+    mov POINT0_X, 90
+    mov POINT0_Y, 90
+    
+    lea di, matriz
+
+    pDrawCoins_loop:
+        ; Esto es lo que se podria cambiar por su getPosicion xD
+        ; Obtenemos el color por el lugar de la matriz que recorremos
+        mov C_COLOR, white
+        mov al, [di]
+
+        ; Si es dos no se renderiza nada
+        jmpif al, 2, pDrawCoins_coin
+        ; si no es 0 movemos el color a negro
+        jmpif al, 0, pDrawCoins_C_COLOR
+            mov C_COLOR, black
+
+        pDrawCoins_C_COLOR:
+
+        ; Se guarda el CX para no perder el contador del loop
+        call pDrawFullCircle
+
+        pDrawCoins_coin:
+        add POINT0_X, 52
+        inc dx
+        inc di
+
+        jmpifn dx, 8, pDrawCoins_jmp
+            mov POINT0_X, 90
+            add POINT0_Y, 52
+            CLEAN <dx>
+
+        pDrawCoins_jmp:
+    loop pDrawCoins_loop
+
+    pops <di, dx, cx, bx, ax>
+
+    ret
+pDrawCoins endP
 
 ;----------------------------
 ; End Render
@@ -782,15 +884,7 @@ main:
     call pGraphicMode 
     call pDrawBoard
 
-    mov POINT0_X, 150
-    mov POINT0_Y, 140
-
-    mov POINT1_X, 150
-    mov POINT1_Y, 150
-
-    mov cx, 10
-
-    call pDrawCirclePoints
+    call pDrawCoins
 
     jmp fin
 

@@ -46,6 +46,9 @@ F8_KEY equ 42h
 F9_KEY equ 43h
 F10_KEY equ 44h
 
+; Constantes para la progra
+COINS_RADIUS equ 10
+
 ; E: Una lista de registros
 ; S: N/A
 ; D: Esta macro hace push de una lista de registros
@@ -242,7 +245,7 @@ endm
 GETNEGPOINT macro point
     local tag, tag2
 
-    PUSHS <ax, bx, cx>
+    PUSHS <ax, cx>
 
     GETDISTANCE
 
@@ -256,7 +259,7 @@ GETNEGPOINT macro point
         add bx, cx
     tag2:
 
-    POPS <cx, bx, ax>
+    POPS <cx, ax>
 endm
 ;; ---- 
 
@@ -361,3 +364,15 @@ et1: jmp etiqueta
 et2:  
 
 endM
+
+MULTCONSIG macro a, b
+
+	PUSHS<cx, dx>
+	mov ax, a
+	mov cx, b
+
+	imul cx
+
+	POPS<dx, cx>
+
+endm
