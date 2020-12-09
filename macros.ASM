@@ -46,6 +46,9 @@ F8_KEY equ 42h
 F9_KEY equ 43h
 F10_KEY equ 44h
 
+; Constantes para la progra
+COINS_RADIUS equ 10
+
 ; E: Una lista de registros
 ; S: N/A
 ; D: Esta macro hace push de una lista de registros
