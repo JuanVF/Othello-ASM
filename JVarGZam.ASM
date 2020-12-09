@@ -11,7 +11,8 @@ include macros.ASM
 ; 4) Modo dieguito en comentarios. (deben llevar entrada, salida, desc y nota (opcional)). 
 ; 5) Tags: nombreProc_nombreTag 
 ; 6) Variables locales: hacerlas con struc
-; 7) Awaiting...
+; 7) Procs: separar los grupos de procedimientos por comentarios
+; 8) Awaiting...
 ; ...
 ; N) Amen
 ; ----------------------------------------------------------
@@ -30,13 +31,27 @@ datos segment
 
     CURSOR dw 00
 
+    handleax dw ? ; handler auxiliar
+    handleRW dw ? ; hanlder de lectura escritura
+
+    buffy db 128 dup ('\n') ; buffer para R/W
+    header db '   Othelo Juego', 0AH, 'Blancas     Negras', 0AH; 35
+    fileName db 'log0000.txt', 0 ; nombre del archivo
+   
+    stringToWrite db '  b12        n32', 0AH ;     
+    ; Formato archivo:
+    ;    Othelo Juego
+    ;Blancas     Negras
+    ;  b12        n32
+    ;  ...        ...
+    ;2 espacios, 3 letras, 8 espacios, 3 letras, 1 salto linea = 17 
+
+
 datos ends
 
 ; Esto es para indicar el tipo de stack que se va a usar
 pila segment stack 'stack'
-
     dw 256 dup (?)
-
 pila ends
 
 
@@ -45,7 +60,45 @@ codigo segment
 
     assume cs:codigo, ds:datos, ss:pila
     jmp inicio
-    
+    inicio:
+    mov ax, ds
+    mov es, ax 
+
+    mov ax, datos
+    mov ds, ax
+
+    mov ax, pila
+    mov ss, ax
+    jmp main
+
+    ;----------------------------
+    ; Teclas
+    ;----------------------------
+
+    ; E: al=ascii, ah=code
+    ; D: llama un procedimiento dependiendo de la tecla, sino nada mas retorna
+    pSwitchkeys proc 
+
+        cmp ah, 01; ESCP
+        CONEJO je fin
+
+        ret 
+    pSwitchkeys endp 
+
+    ; pide una tecla y espera hasta que la obtenga
+    pInput proc
+        push ax
+        mov ah, 00H ; rt ax, al=ascii, ah=code
+        int 16H
+
+        call pSwitchkeys
+        pop ax
+        ret 
+    pInput endp
+
+    ;----------------------------
+    ; End Teclas
+    ;----------------------------
 
     ;----------------------------
     ; RENDER
@@ -581,36 +634,165 @@ codigo segment
         ret
     pDrawBoard endP
 
-    ;----------------------------
-    ; END RENDER
-    ;----------------------------
+;----------------------------
+; End Render
+;----------------------------
 
-    inicio:
-        mov ax, ds
-        mov es, ax 
+;----------------------------
+; Archivos
+;----------------------------
 
-        mov ax, datos
-        mov ds, ax
+; S: fileName
+; D: incrementa en 1 el nombre del archivo
+pIncrementFileName proc 
 
-        mov ax, pila
-        mov ss, ax
+    ; 1. sacamos el numero en el ax
+    lea si, [fileName+7] ; apuntando al punto
 
-        call pGraphicMode
+pIncrementFileName_inc:
+    dec si
+    inc byte ptr [si]
+    cmp byte ptr [si], '9'+1 ; while (si >= 9)
+    jl pIncrementFileName_fin
 
-        call pDrawBoard
+    mov byte ptr [si], '0'
+    jmp pIncrementFileName_inc
 
-        mov POINT0_X, 150
-        mov POINT0_Y, 140
+pIncrementFileName_fin:
 
-        mov POINT1_X, 150
-        mov POINT1_Y, 150
+    ret 
+pIncrementFileName endp 
 
-        mov cx, 10
+;E: BX=handle, CX=n bytes, ds:dx=buffer
+;S: ax error si cf
+pWrite proc
+	mov ah, 40h
+	int 21h 
+	ret
+pWrite endp 
 
-        call pDrawCirclePoints
+; E: HandlerRW
+; D: escribe la cabecera del archivo 
+pAddHeader proc 
+    WRITEN 35, handleRW, header
+    ret 
+pAddHeader endp 
 
-        mov ax, 4C00h    ; protocolo de finalización del programa.
-        int 21h
+; E: HANDLEAX con el numero de archivo a cerrar
+; S: cf = 1 si hubo error, ax codigo de error
+; D: cierra los archivos
+pClose proc
+; rt ax error si cf
+	push bx
+	
+	mov ah, 3Eh ; cerrar el archivo
+	mov bx, [handleax]
+	int 21h
+
+	pop bx
+
+	ret
+pClose endp
+
+; S: ax con error si CF, handler en handerRW sino
+; D: intenta crear el archivo que esta en la var fileName 
+pCreate proc
+
+	push cx
+	
+	mov ah, 3Ch  ; crear el archivo  
+    lea dx, fileName
+    mov cx, 5 ; type file
+    int 21h
+
+    mov [handlerw], ax ; movemos el handler
+    ; imprimimos la cabecera
+    call pAddHeader
+
+	pop cx
+
+	ret
+pCreate endp
+
+; S: fileName con el nombre del archivo, ax con el numero de handler
+; D: intenta abrir el archivo log0000.txt, sino existe lo crea, si existe crea su consecutivo
+pOpen proc 
+
+ ; abir file:
+	mov ah, 3Dh
+	lea dx, [filename]
+	mov al, 2 ; RW
+	int 21h
+    CALLIFANDRET jc, pCreate ; si no existe lo intentamos crear
+    
+    CLOSEM ax ; se tiene que cerrar aunque falle el crear
+
+    ; si llega aqui es porque el archivo ya existia
+    call pIncrementFileName ; incrementamos el numero de archivo
+
+    call pOpen
+    ret 
+pOpen endp 
+
+; E: al = fil, ah = col, bl = team(0 = blancas, 1 = negras)
+pInsertInStr proc 
+
+    lea si, stringToWrite
+    add si, 3
+
+    cmp bl, 0
+    je pInsertInStr_blancas
+    ; esto son las negras
+    add si, 11        
+pInsertInStr_blancas:
+
+    add al, 30h ; para pasarlo a string
+    add ah, 30h ; para pasarlo a string
+    mov byte ptr [si], ah
+    inc si
+    mov byte ptr [si], al
+
+    ret 
+pInsertInStr endp 
+
+
+; E: stringToWrite, handleRW
+; D: escribe al final del archivo los primeros 17 bytes que esten en stringToWrite 
+pWriteString proc 
+    WRITEN 17, handleRW, stringToWrite
+    ret 
+pWriteString endp 
+
+;----------------------------
+; End Archivos
+;----------------------------
+
+main:
+    call pOpen
+   ; call pGraphicMode 
+   ; call pDrawBoard
+
+    mov POINT0_X, 150
+    mov POINT0_Y, 140
+
+    mov POINT1_X, 150
+    mov POINT1_Y, 150
+
+    mov cx, 10
+
+    call pDrawCirclePoints
+
+    jmp fin
+
+
+loopTeclas: ; no sale a menos que sea ESC
+	call pInput
+	jmp loopTeclas
+
+fin:
+    CLOSEM handleRW ; cerramos el archivo de juego
+    mov ax, 4C00h    ; protocolo de finalización del programa.
+    int 21h
 
 codigo ends
 end inicio

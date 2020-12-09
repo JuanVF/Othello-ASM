@@ -258,3 +258,106 @@ GETNEGPOINT macro point
 
     POPS <cx, bx, ax>
 endm
+;; ---- 
+
+; E: un jump, el nombre de un procedimiento
+; D: llama a ese procedimiento si el jump se cumple
+CALLIF macro salto, procs
+	local et1
+	local et2
+
+ 
+	salto et1
+	jmp et2
+et1: call procs	
+et2:
+
+endM
+
+; E: un jump, el nombre de un procedimiento
+; D: llama a ese procedimiento y retorna si el jump se cumple
+CALLIFANDRET macro salto, procs
+	local eta1
+	local eta2
+
+	salto eta1
+	jmp eta2
+eta1: 
+	call procs	
+	ret 
+eta2:
+
+endm
+
+; E: una variable de 4 bytes
+; D: hace el push de una variable de 4 bytes xd
+PUSH4BYTES macro VAR
+
+    push word ptr [VAR]
+    push word ptr [VAR+2]
+endm
+
+
+; E: una variable de 4 bytes
+; D: hace el pop de una variable de 4 bytes xd
+POP4BYTES macro VAR
+
+    pop word ptr [VAR+2]
+    pop word ptr [VAR]
+endm
+
+;; --- start W/R macros
+
+; E: un handler
+; D: cierra el archivo asociado al handler
+CLOSEM macro HANDLER
+
+	PUSHS <handleax, ax> 
+
+	mov ax, HANDLER	
+	mov handleax, ax
+	call pClose
+
+	POPS <ax, handleax> 
+
+endm
+
+WRITEN macro N, handle, buffer
+
+	PUSHS <bx, cx, dx>
+
+	mov cx, N ;; N bytes a escribir
+	mov bx, handle
+	lea dx, buffer
+	call pWrite
+
+	POPS <dx, cx, bx>
+
+endm
+
+; E: 3 numeros de un Byte
+; D: inserta esa jugada en el  
+INSERTPLAY macro col, fil, team
+
+    PUSHS<ax, bx>
+    mov al, fil
+    mov ah, col
+    mov bl, team
+    call pInsertInStr ; esto hace el 
+
+    POPS<bx, ax>
+endm
+
+;; --- end W/R macros
+
+
+CONEJO macro salto , etiqueta
+  local et1
+  local et2
+
+  salto et1
+  jmp et2
+et1: jmp etiqueta
+et2:  
+
+endM
