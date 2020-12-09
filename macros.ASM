@@ -107,6 +107,20 @@ endm
 
 ; E: Dos registros/num y una etiqueta
 ; S: N/A
+; D: Compara dos objetos, si obj1 > obj2
+;    salta a la etiqueta
+JMPIFGE macro obj1, obj2, etiqueta
+    local tag
+    cmp obj1, obj2
+    jc tag
+    jz etiqueta
+    jmp etiqueta
+
+    tag:
+endm
+
+; E: Dos registros/num y una etiqueta
+; S: N/A
 ; D: Compara dos objetos, si obj1 < obj2
 ;    salta a la etiqueta
 JMPIFL macro obj1, obj2, etiqueta
@@ -183,4 +197,64 @@ endm
 C2 macro reg
     not reg
     inc reg
+endm
+
+; E: Dos registros y un valor para el color
+; S: N/A
+; D: Dibuja un pixel basado en (x, y)
+JDRAWPIXELMACRO macro x, y, color
+
+	PUSHS <ax, cx, dx>
+
+	mov cx, x
+	mov dx, y
+	mov al, color
+	call drawPixel
+
+	POPS <dx, cx, ax>
+
+endm
+
+; E: AX - Num
+;    BX - Num
+; S: CX - Num
+; D: Dados dos puntos (x0 y x1) en AX y BX retorna su distancia en valor absoluto
+GETDISTANCE macro
+    local tag
+    
+    PUSHS <ax, bx>
+    
+    sub ax, bx
+
+    jmpifns ax, tag
+        C2 ax
+    tag:
+
+    mov cx, ax
+
+    POPS <bx, ax>
+endm
+
+; E: Centro en AX y el punto en BX
+; S: Una modificacion a la variable
+; D: Dado un punto p en el plano cartesiano, retorna -p
+;    Esto basado en un centro dado por AX
+GETNEGPOINT macro point
+    local tag, tag2
+
+    PUSHS <ax, bx, cx>
+
+    GETDISTANCE
+
+    JMPIFL bx, ax, tag 
+        sub bx, cx
+        sub bx, cx
+
+        jmp tag2
+    tag:
+        add bx, cx
+        add bx, cx
+    tag2:
+
+    POPS <cx, bx, ax>
 endm
