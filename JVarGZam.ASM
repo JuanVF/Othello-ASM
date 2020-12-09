@@ -53,7 +53,7 @@ datos segment
     ; 0 - Blanco
     ; 1 - Negro
     ; 2 - Vacio :c
-    Matriz db 0, 2, 1, 1, 60 dup(2)
+    Matriz db 64 dup(2)
 
     toPlay dw 00h
 
