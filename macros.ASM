@@ -209,7 +209,7 @@ JDRAWPIXELMACRO macro x, y, color
 	mov cx, x
 	mov dx, y
 	mov al, color
-	call drawPixel
+	call pDrawPixel
 
 	POPS <dx, cx, ax>
 
