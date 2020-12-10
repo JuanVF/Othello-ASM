@@ -37,10 +37,10 @@ datos segment
     handleRW dw ? ; hanlder de lectura escritura
 
     buffy db 128 dup ('\n') ; buffer para R/W
-    header db '   Othelo Juego', 0AH, 'Blancas     Negras', 0AH; 35
+    header db '   Othelo Juego', 0AH, 'Negras     Blancas', 0AH; 35
     fileName db 'log0000.txt', 0 ; nombre del archivo
    
-    stringToWrite db '  b12        n32', 0AH ;   
+    stringToWrite db '  n12        b32', 0AH ;   
 
     ; Formato archivo:
     ;    Othelo Juego
@@ -50,8 +50,8 @@ datos segment
     ;2 espacios, 3 letras, 8 espacios, 3 letras, 1 salto linea = 17 
 
     ; Matriz
-    ; 0 - Blanco
-    ; 1 - Negro
+    ; 0 - Negro
+    ; 1 - Blanco
     ; 2 - Vacio :c
     Matriz db 64 dup(2)
     vel db 1, -1, 1, 0, 1, 1, 0, -1, 0, 1, -1, -1, -1, 0, -1, 1 ; posiciones para moverse en la matriz sin hacer un for doble
@@ -273,12 +273,12 @@ pPutPice proc
 
 pPutPice_neighbors:
 
-    mov dl, byte ptr [si] ; vx
-    mov dh, byte ptr [si+1] ; vy
+    mov dl, byte ptr [si] ; vy
+    mov dh, byte ptr [si+1] ; vx
 
     push ax 
-    add al, dl 
-    add ah, dh
+    add al, dh 
+    add ah, dl
     GETINMATRIX al, ah
 
     cmp al, bl  
@@ -914,14 +914,14 @@ pDrawCoins proc
     pDrawCoins_loop:
         ; Esto es lo que se podria cambiar por su getPosicion xD
         ; Obtenemos el color por el lugar de la matriz que recorremos
-        mov C_COLOR, white
+        mov C_COLOR, black
         mov al, [di]
 
         ; Si es dos no se renderiza nada
         jmpif al, 2, pDrawCoins_coin
         ; si no es 0 movemos el color a negro
         jmpif al, 0, pDrawCoins_C_COLOR
-            mov C_COLOR, black
+            mov C_COLOR, white
 
         pDrawCoins_C_COLOR:
 
@@ -1083,11 +1083,11 @@ main:
     call pOpen
 
     ;mov byte ptr [MATRIZ+27], 1
-    PUTINMATRIX 3, 3, 0
-    PUTINMATRIX 4, 4, 0
+    PUTINMATRIX 3, 3, 1
+    PUTINMATRIX 4, 4, 1
 
-    PUTINMATRIX 4, 3, 1
-    PUTINMATRIX 3, 4, 1
+    PUTINMATRIX 4, 3, 0
+    PUTINMATRIX 3, 4, 0
 
     call pGraphicMode 
     ;call pDrawBoard
