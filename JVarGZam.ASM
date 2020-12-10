@@ -1,5 +1,5 @@
-include ./code/tareas/num8/macros.ASM
-; include macros.ASM
+;include ./code/tareas/num8/macros.ASM
+include macros.ASM
 
 ; ----------------------------------------------------------
 ; MANDAMIENTOS DE LA PROGRA xD
@@ -54,8 +54,10 @@ datos segment
     ; 1 - Negro
     ; 2 - Vacio :c
     Matriz db 64 dup(2)
+    vel db 1, -1, 1, 0, 1, 1, 0, -1, 0, 1, -1, -1, -1, 0, -1, 1 ; posiciones para moverse en la matriz sin hacer un for doble
 
     toPlay dw 00h
+    turn dw 0 ; 0 = Blanco, 1 = negro ; 0 = filas, 1 = columnas
 
 datos ends
 
@@ -81,8 +83,51 @@ codigo segment
     jmp main
 
 ;----------------------------
-; Teclas
+; Start Teclas
 ;----------------------------
+
+; E: al= numero + 30h
+; S: pone el numero en toPlay
+; D: cuando precionan un numero, lo pone en la columna o fila, dependiendo de [turn+1]
+; si iban las negras entonces guarda la jugada en el archivo, no hace nada mas que meter esa jugada
+; en el string para meterlo en el archivo posteriormente
+pPutNumber proc 
+
+    sub al, 30h
+
+    cmp byte ptr [turn+1], 0 ; 0 = filas, 1 = columnas
+    je pPutNumber_filas
+
+;-------- columnas --------
+    mov byte ptr [toplay+1], al ; movemos el numero a las columnas
+
+    PUTINMATRIXPLAY <byte ptr[toplay]>, <byte ptr[toplay+1]>, <byte ptr[turn]> ; en la matriz
+    INSERTPLAY <byte ptr[toplay]>, <byte ptr[toplay+1]>, <byte ptr[turn]> ; en el string
+
+    mov byte ptr [turn+1], 0 ; para que sigan las filas de nuevo 
+
+    cmp byte ptr[turn], 0 ; si es negro lo guardamos en le file  
+    je pPutNumber_blanca 
+        ; eran negras
+        call pWriteString ; lo guardamos en file
+        mov byte ptr [turn], 0 ; para que sigan las blancas
+        
+    jmp pPutNumber_fin
+pPutNumber_blanca:
+
+        ; eran blancas
+        mov byte ptr [turn], 1 ; para que sigan las negras
+    jmp pPutNumber_fin
+;-------- filas --------
+pPutNumber_filas:
+    
+    mov byte ptr [toplay], al ; movemos el numero a las filas
+    mov byte ptr [turn+1], 1 ; para que sigan las columnas 
+
+pPutNumber_fin:
+
+    ret 
+pPutNumber endp  
 
 ; E: al=ascii, ah=code
 ; D: llama un procedimiento dependiendo de la tecla, sino nada mas retorna
@@ -90,6 +135,16 @@ pSwitchkeys proc
 
     cmp ah, 01; ESCP
     CONEJO je fin
+
+    cmp al, 30h
+    jl pSwitchkeys_noNumero
+
+    cmp al, 37h
+    jg pSwitchkeys_noNumero
+
+    call pPutNumber; si era numero
+
+pSwitchkeys_noNumero:
 
     ret 
 pSwitchkeys endp 
@@ -107,6 +162,152 @@ pInput endp
 
 ;----------------------------
 ; End Teclas
+;----------------------------
+
+;----------------------------
+; Start Matrix operations
+;----------------------------
+
+; E: al= fil, ah = col, bl = color
+; D: pone el numero bl en la matrix, lo unico que valida es que no este fuera de la misma
+pPutInMatrix proc 
+
+    PUSHS<ax, bx, dx>
+
+    mov dl, bl ; respaldamos el color
+    mov bl, 8
+
+    mov bh, ah ; respaldamos la columna
+    xor ah, ah
+    mul bl ; fil * 8
+
+    add al, bh ; fil * 8 + colum
+    cmp ax, 64
+    jge getInMatr_fin
+
+    lea bx, Matriz
+    add bx, ax
+
+    mov byte ptr [bx], dl
+
+getInMatr_fin:
+    POPS<dx, bx, ax>
+
+    ret 
+pPutInMatrix endp
+
+
+; E: al = fil, ah = colm
+; S: al = (0 blanco, 1 negro, 2 vacio)
+; D: retorna lo que esta en esa posicion, si esta fuera de la matrix entonces retorna vacio
+pGetInMatr proc 
+
+    push bx
+
+    mov bl, 8
+
+    mov bh, ah ; respaldamos la columna
+    xor ah, ah
+    mul bl ; fil * 8
+
+    add al, bh ; fil * 8 + colum
+    cmp ax, 64
+    jge getInMatr_outOfRange
+
+    lea bx, Matriz
+    add bx, ax
+
+    mov al, byte ptr [bx]
+    jmp pgetInMatr_fin
+
+getInMatr_outOfRange:
+    mov al, 2 ; vacio
+
+pgetInMatr_fin:
+    pop bx
+
+    ret 
+pGetInMatr endp 
+
+; E: al= fil, ah = col, dl = vx, dh = vy, bl = color
+; S: al con el color
+; D: comienza a buscar en esa direccion, si se encuentra uno de color bl pinta todo el path
+pPath proc 
+
+    PUSHS<bx, cx, dx>
+
+    add al, dh
+    add ah, dl
+
+    mov cx, ax ; respaldamos ax
+    GETINMATRIX al, ah
+    cmp al, 2 ; si es vacio retorna 
+    je pPath_fin
+
+    cmp al, bl; si es igual al color retorna el color
+    je pPath_fin
+
+    ; sino:
+    mov ax, cx; recuperamos
+    call pPath
+
+    cmp al, bl ; si es igual pintamos esa posicion
+    jne pPath_fin
+
+    PUTINMATRIX cl, ch, bl  ; si era igual  
+
+pPath_fin:
+
+    POPS<dx, cx, bx>
+    ret 
+pPath endp 
+
+; E: al= fil, ah = col, bl = color
+; D: intenta poner una pieza en esa posicion
+pPutPice proc 
+
+    PUSHS<ax, bx, cx, dx>
+
+    mov cx, 8 ; 8 posiciones a los lados
+    lea si, vel
+
+pPutPice_neighbors:
+
+    mov dl, byte ptr [si] ; vx
+    mov dh, byte ptr [si+1] ; vy
+
+    push ax 
+    add al, dl 
+    add ah, dh
+    GETINMATRIX al, ah
+
+    cmp al, bl  
+    je pPutPice_equals; si lo que esta en ese veciono es igual al color entonces continue
+    pop ax 
+
+    push ax 
+    call pPath
+    
+    cmp al, bl
+    jne pPutPice_equals ; si no encontro path entonces continuamos 
+
+    pop ax 
+    push ax
+    PUTINMATRIX al, ah, bl ; encontramos path, ponemos esta posicion
+
+pPutPice_equals:
+    pop ax 
+
+    inc si
+    inc si
+    loop pPutPice_neighbors
+
+    POPS<dx, cx, bx, ax>
+    ret
+pPutPice endp
+
+;----------------------------
+; End Matrix operations
 ;----------------------------
 
 ;----------------------------
@@ -879,22 +1080,30 @@ pWriteString endp
 ;----------------------------
 
 main:
-    ;call pOpen
+    call pOpen
+
+    ;mov byte ptr [MATRIZ+27], 1
+    PUTINMATRIX 3, 3, 0
+    PUTINMATRIX 4, 4, 0
+
+    PUTINMATRIX 4, 3, 1
+    PUTINMATRIX 3, 4, 1
 
     call pGraphicMode 
-    call pDrawBoard
+    ;call pDrawBoard
+    ;call pDrawCoins
+    ;jmp fin
 
-    call pDrawCoins
-
-    jmp fin
 
 
 loopTeclas: ; no sale a menos que sea ESC
+    call pDrawBoard
+    call pDrawCoins
 	call pInput
 	jmp loopTeclas
 
 fin:
-    ;CLOSEM handleRW ; cerramos el archivo de juego
+    CLOSEM handleRW ; cerramos el archivo de juego
     mov ax, 4C00h    ; protocolo de finalización del programa.
     int 21h
 

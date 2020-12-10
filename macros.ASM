@@ -376,3 +376,51 @@ MULTCONSIG macro a, b
 	POPS<dx, cx>
 
 endm
+
+;-------------------------
+; Strat Matrix things
+;-------------------------
+
+; E: 2 numeros entre 0-7
+; S: retorna en el al (0 blanco, 1 negro, 2 vacio)
+; D: retorna lo que esta en esa posicion, si esta fuera de la matrix entonces retorna vacio
+GETINMATRIX macro fil, col
+    mov al, fil
+    mov ah, col
+    call pGetInMatr  
+endm
+
+
+; E: fil, col, color
+; D: pone el numero bl en la matrix, lo unico que valida es que no este fuera de la misma
+PUTINMATRIX macro fil, col, color
+    push ax 
+    push bx
+
+    mov al, fil
+    mov ah, col 
+    mov bl, color 
+    call pPutInMatrix
+
+    pop bx
+    pop ax
+endm
+
+; E: fil, col, color
+; D: intenta hace una jugada en esa posicion
+PUTINMATRIXPLAY macro fil, col, color
+    push ax 
+    push bx
+
+    mov al, fil
+    mov ah, col 
+    mov bl, color 
+    call pPutPice
+
+    pop bx
+    pop ax
+endm
+
+;-------------------------
+; End Matrix things
+;-------------------------

@@ -49,21 +49,18 @@ for row in range(8):
     mtz.append(['-','-','-','-','-','-','-','-'])
 
 
-mtz[3][3] = 'N'
-mtz[4][4] = 'N'
+mtz[3][3] = 'B'
+mtz[4][4] = 'B'
 
-mtz[4][3] = 'B'
-mtz[3][4] = 'B'
-
-
+mtz[4][3] = 'N'
+mtz[3][4] = 'N'
 
 
-putPice(2, 3, 'N')
 
 col = 0
 col1 = 'B'
 col2 = 'N'
-color = 'B'
+color = 'N'
 
 while (col != 9):
     printMatrix(mtz)
