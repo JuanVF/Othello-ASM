@@ -49,6 +49,11 @@ F10_KEY equ 44h
 ; Constantes para la progra
 COINS_RADIUS equ 10
 
+STAGE_HOME equ 00h
+STAGE_GAME equ 01h
+STAGE_HELP equ 02h
+STAGE_QUIT equ 03h
+
 ; E: Una lista de registros
 ; S: N/A
 ; D: Esta macro hace push de una lista de registros
@@ -261,6 +266,64 @@ GETNEGPOINT macro point
 
     POPS <cx, ax>
 endm
+
+; E: AL - ASCII
+;    BL - Color
+; S: N/A
+; D: Escribe un ASCII en modo grafico
+DRAWCHAR macro
+    PUSHS <ax, bx, cx>
+        
+    mov ah, 09h
+    mov bh, 1
+    mov cx, 1
+
+    int 10h
+
+    POPS <cx, bx, ax>
+endm
+
+; E: Di - String
+;    DH - Linea inicial
+;    DL - Columna inicial
+;    BL - Color
+; S: N/A
+; D: Escribe un string ASCIIZ en el texto
+DRAWTEXT macro
+    local tag, tag2
+
+    PUSHS <ax, bx, cx, dx, di>
+
+    tag:
+        mov al, [di]
+        jmpif al, 0, tag2
+
+        SETCURSOR
+        DRAWCHAR
+        inc dl
+
+        inc di
+    jmp tag
+    tag2:
+
+    POPS <di, dx, cx, bx, ax>
+endm
+
+; E: DH - Linea
+;    DL - Columna
+; S: N/A
+; D: Posiciona el cursor
+SETCURSOR macro
+    PUSHS <ax, bx, dx>
+
+    mov ah, 02h
+    mov bh, 0
+
+    int 10h
+
+    POPS <dx, bx, ax>
+endm
+
 ;; ---- 
 
 ; E: un jump, el nombre de un procedimiento

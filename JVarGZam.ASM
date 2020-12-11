@@ -1,5 +1,5 @@
-;include ./code/tareas/num8/macros.ASM
-include macros.ASM
+include ./code/tareas/num8/macros.ASM
+;include macros.ASM
 
 ; ----------------------------------------------------------
 ; MANDAMIENTOS DE LA PROGRA xD
@@ -33,6 +33,17 @@ datos segment
 
     C_COLOR db white
 
+    ; Animacion render del home
+    AN_POINT0 dw 2 dup(0); x, y
+    AN_POINT1 dw 2 dup(0); x, y
+
+    AN_POINT0_X equ word ptr [AN_POINT0]
+    AN_POINT0_Y equ word ptr [AN_POINT0+2]
+
+    AN_POINT1_X equ word ptr [AN_POINT1]
+    AN_POINT1_Y equ word ptr [AN_POINT1+2]
+
+    ; Archivos
     handleax dw ? ; handler auxiliar
     handleRW dw ? ; hanlder de lectura escritura
 
@@ -40,7 +51,26 @@ datos segment
     header db '   Othelo Juego', 0AH, 'Negras     Blancas', 0AH; 35
     fileName db 'log0000.txt', 0 ; nombre del archivo
    
-    stringToWrite db '  n12        b32', 0AH ;   
+    stringToWrite db '  n12        b32', 0AH ;  
+
+    ; Informacion de la UI
+    gameTitle  db "Othello", 00h 
+    gameTurn   db "Turno de:", 00h
+    gameP1     db "blancas",00h
+    gameP2     db " negras", 00h
+    gamePosTxt db "Pos: ", 00h
+    gamePos    db "  ", 00h
+    gameAbout  db "F1:", 00h
+    gameAbout2  db "   -Ayuda", 00h
+    gameAbout3  db "   -Acerca de", 00h
+
+    homePlay db "Jugar", 00h
+    homeHelp db "Ayuda", 00h
+
+    homeSelected db 00h
+
+    ; Seleccion de pantalla
+    currentStage db STAGE_GAME
 
     ; Formato archivo:
     ;    Othelo Juego
@@ -83,8 +113,42 @@ codigo segment
     jmp main
 
 ;----------------------------
+; Utils
+;----------------------------
+
+; E/S: N/A
+; D: Hace un delay de 1/15 segundos
+pDelay proc
+    pushs <ax, cx, dx>
+    
+    mov cx, 02h
+    mov dx, 49F0h
+    mov ah, 86h
+    int 15h 
+    
+    pops <dx, cx, ax>
+
+    ret
+pDelay endP 
+
+;----------------------------
+; End Utils
+;----------------------------
+
+;----------------------------
 ; Start Teclas
 ;----------------------------
+
+; E: N/A
+; S: AL - ASCII digitado
+;    AH - Scan Code
+; D: Retorna en AX los datos de la tecla digitada
+; N: La uso en el stage home y help :)
+pGetKeyPressed proc
+    mov ah, 11h
+    int 16h
+    ret
+pGetKeyPressed endP
 
 ; E: al= numero + 30h
 ; S: pone el numero en toPlay
@@ -703,7 +767,7 @@ pDrawCirclePoints proc
     PUSHS <ax, bx, cx, dx>
     PUSHS <POINT0_X, POINT0_Y>
 
-    JDRAWPIXELMACRO POINT1_X, POINT1_Y, red
+    JDRAWPIXELMACRO POINT1_X, POINT1_Y, C_COLOR
 
     ; Se dibuja (x0, y0)
     JDRAWPIXELMACRO POINT0_X, POINT0_Y, C_COLOR
@@ -847,12 +911,33 @@ pDrawFullCircle proc
     ret
 pDrawFullCircle endP
 
+; E/S: N/A
+; D: Dibuja una pantall negra
+pBlackScreen proc
+    PUSHS <bx, cx, dx>
+
+    mov bh, black
+    mov cl, 0
+    mov ch, 0
+
+    mov dl, 80
+    mov dh, 30
+
+    call pDrawBlock
+    
+    POPS <dx, cx, bx>
+
+    ret
+pBlackScreen endP
+
 ; E/S : N/A
 ; D: Se encarga de dibujar la base del tablero
 pDrawBoard proc
     PUSHS <bx, cx, dx>
 
-    ; Dibujamos toda la pantalla de
+    call pBlackScreen
+
+    ; Dibujamos la base verde
     mov bh, green
     mov cl, 8
     mov ch, 4
@@ -870,6 +955,10 @@ pDrawBoard proc
     mov POINT0_Y, 64
     mov POINT1_Y, 64
 
+    ; Elegimos el color
+    mov al, black
+    mov byte ptr [CURSOR+1], al
+
     pDrawBlock_hlines:
         call drawLine
 
@@ -885,6 +974,10 @@ pDrawBoard proc
 
     mov POINT0_Y, 64
     mov POINT1_Y, 480
+
+    ; Elegimos el color
+    mov al, black
+    mov byte ptr [CURSOR+1], al
 
     pDrawBlock_vlines:
         call drawLine
@@ -945,6 +1038,290 @@ pDrawCoins proc
 
     ret
 pDrawCoins endP
+
+; E: N/A
+; S: N/A
+; D: Se encarga de dibujar las posiciones de la matriz
+pDrawPositions proc
+    PUSHS <ax, bx, cx, cx>
+
+    ; Dibujamos los de las columnas
+
+    ; Posicion de cursor inicial
+    mov dh, 3
+    mov dl, 10
+
+    mov al, '0'
+    mov bl, white
+
+    mov cx, 08
+
+    pDrawPositions_cols:
+        SETCURSOR
+        DRAWCHAR
+
+        add dl, 7
+        inc al
+
+        jmpifn cx, 5, pDrawPositions_l
+
+        sub dl, 02
+
+    pDrawPositions_l: loop pDrawPositions_cols
+
+    ; Dibujamos los de las filas
+
+    ; Posicion de cursor inicial
+    mov dh, 5
+    mov dl, 5
+
+    mov al, '0'
+    mov bl, white
+
+    mov cx, 08
+
+    pDrawPositions_row:
+        SETCURSOR
+        DRAWCHAR
+
+        add dh, 3
+        inc al
+
+        jmpifn cx, 6, pDrawPositions_r
+
+        add dh, 1
+
+    pDrawPositions_r: loop pDrawPositions_row
+
+    POPS <dx, cx, bx, ax>
+
+    ret
+pDrawPositions endP
+
+; E: N/A
+; S: N/A
+; D: Se encarga de dibujar la info general del juego
+pDrawInfo proc
+    PUSHS <ax, bx, dx, di>
+
+    mov bl, white
+
+    ; Se dibuja el titulo del juego
+    lea di, gameTitle
+    mov dh, 2
+    mov dl, 65
+
+    DRAWTEXT
+
+    ; Se escribe el texto de turno
+    lea di, gameTurn
+    mov dh, 4
+    mov dl, 60
+
+    DRAWTEXT
+
+    ; Se dibujan los turnos
+    lea di, gameP2
+
+    JMPIF turn, 0, pDrawInfo_blacks
+        lea di, gameP1
+    pDrawInfo_blacks:
+
+    mov dh, 4
+    mov dl, 69
+
+    DRAWTEXT
+
+    ; Se dibuja lo que se ha escrito por teclado
+    lea di, gamePosTxt
+    mov dh, 6
+    mov dl, 60
+
+    DRAWTEXT
+
+    lea di, gamePos
+
+    mov al, byte ptr [toPlay]
+    add al, 30h
+    mov [di], al
+    
+    mov al, byte ptr [toPlay+1]
+    add al, 30h
+    mov [di+1], al
+
+    mov dh, 6
+    mov dl, 66
+    lea di, gamePos
+    
+    DRAWTEXT
+
+    ; Mensajes de ayuda
+    lea di, gameAbout
+    mov dh, 8
+    mov dl, 60
+    
+    DRAWTEXT
+
+    lea di, gameAbout2
+    mov dh, 9
+    mov dl, 60
+    
+    DRAWTEXT
+
+    lea di, gameAbout3
+    mov dh, 10
+    mov dl, 60
+    
+    DRAWTEXT
+
+    POPS <di, dx, bx, ax>
+    ret
+pDrawInfo endP
+
+pHomeAnimation proc
+    PUSHS <ax, bx, cx>
+    PUSHS <POINT0_X, POINT0_Y, POINT1_X, POINT1_Y>
+
+    ; Punto cero de la animacion
+    mov POINT0_X, 0
+    mov POINT0_Y, 200
+
+    mov POINT1_X, 640
+    mov POINT1_Y, 200
+
+    mov al, magenta 
+    mov byte ptr [CURSOR+1], al
+
+    call drawLine
+
+    ; Aplicamos el efecto de animacion 8)
+    MOVV POINT0_X, AN_POINT0_X
+    MOVV POINT0_Y, AN_POINT0_Y
+
+    MOVV POINT1_X, AN_POINT1_X
+    MOVV POINT1_Y, AN_POINT1_Y
+
+    mov al, magenta 
+    mov byte ptr [CURSOR+1], al
+
+    mov bx, 70 ; Es la distancia entre cada linea
+
+    ; Dibujamos las lineas horizontales
+    mov cx, 4
+    pHomeAnimation_hor:
+        call drawLine
+
+        add POINT0_Y, bx
+        add POINT1_Y, bx
+    loop pHomeAnimation_hor
+
+    add AN_POINT0_Y, 2
+    add AN_POINT1_Y, 2
+
+    ; Reseteamos la animacion
+    mov ax, AN_POINT0_Y
+    JMPIFN ax, 270, pHomeAnimation_reset
+        MOVV AN_POINT0_Y, 200
+        MOVV AN_POINT1_Y, 200
+    pHomeAnimation_reset:
+
+    ; Dibujamos las lineas verticales de la izquierda
+    MOVV POINT0_X, 290
+    MOVV POINT0_Y, 200
+
+    MOVV POINT1_X, 270
+    MOVV POINT1_Y, 480
+
+    mov al, lighBlue 
+    mov byte ptr [CURSOR+1], al
+
+    mov cx, 6
+    pHomeAnimation_verl:
+        call drawLine
+
+        sub POINT0_X, 50
+        sub POINT1_X, 90
+
+        mov ax, POINT1_X
+        JMPIFNS ax, pHomeAnimation_verl_nsign
+        MOVV POINT1_X, 0
+        sub POINT1_Y, 110
+    pHomeAnimation_verl_nsign:
+    loop pHomeAnimation_verl
+
+    ; Dibujamos las lineas verticales de la derecha
+    MOVV POINT0_X, 330
+    MOVV POINT0_Y, 200
+
+    MOVV POINT1_X, 350
+    MOVV POINT1_Y, 480
+
+    mov al, lighBlue 
+    mov byte ptr [CURSOR+1], al
+
+    mov cx, 6
+    pHomeAnimation_verr:
+        call drawLine
+
+        add POINT0_X, 50
+        add POINT1_X, 90
+
+        mov ax, POINT1_X
+        JMPIFL ax, 640, pHomeAnimation_verr_nsign
+        MOVV POINT1_X, 640
+        sub POINT1_Y, 110
+    pHomeAnimation_verr_nsign:
+    loop pHomeAnimation_verr
+
+    POPS <POINT1_Y, POINT1_X, POINT0_Y, POINT0_X>
+    POPS <cx, bx, ax>
+
+    ret
+pHomeAnimation endP
+
+; E/S: N/A
+; D: Se encarga de dibujar los botones del home
+pHomeInfo proc
+    PUSHS <ax, bx, cx, dx>
+
+    lea di, gameTitle
+    mov dh, 3
+    mov dl, 33
+    mov bl, magenta
+
+    DRAWTEXT
+
+    ; Boton de play
+    lea di, homePlay
+    mov dh, 5
+    mov dl, 30
+    mov bl, white
+
+    mov al, homeSelected
+    JMPIF al, 01h, pHomeInfo_play_color
+        mov bl, lighBlue
+
+    pHomeInfo_play_color:
+
+    DRAWTEXT
+
+    ; Boton de help
+    lea di, homeHelp
+    mov dh, 5
+    mov dl, 38
+    mov bl, white
+
+    mov al, homeSelected
+    JMPIF al, 00h, pHomeInfo_help_color
+        mov bl, lighBlue
+
+    pHomeInfo_help_color:
+
+    DRAWTEXT
+
+    POPS <dx, cx, bx, ax>
+    ret
+pHomeInfo endP
 
 ;----------------------------
 ; End Render
@@ -1079,6 +1456,92 @@ pWriteString endp
 ; End Archivos
 ;----------------------------
 
+;----------------------------
+; Manejador de pantallas
+;----------------------------
+
+; E/S: N/A
+; D: Esta es el ciclo para la pantalla de juego
+pStageGame proc
+
+    pStageGame_loop: ; no sale a menos que sea ESC
+        call pDrawBoard
+        call pDrawCoins
+        call pDrawPositions
+        call pDrawInfo
+        call pInput
+        jmp pStageGame_loop
+    
+    ret
+pStageGame endP
+
+; E/S: N/A
+; D: Este se encarga de renderizar el home
+pStageHome proc
+
+    MOVV AN_POINT0_X, 0
+    MOVV AN_POINT0_Y, 200
+
+    MOVV AN_POINT1_X, 640
+    MOVV AN_POINT1_Y, 200
+
+    pStageHome_loop:
+        call pBlackScreen
+        call pHomeInfo
+        call pHomeAnimation
+        call pGetKeyPressed
+
+        JMPIF ah, SCAPE, pStageHome_quit
+
+        call pDelay
+    jmp pStageHome_loop
+    pStageHome_quit:
+    mov currentStage, STAGE_QUIT
+
+    pStageHome_end:
+
+    ret
+pStageHome endP
+
+; E/S: N/A
+; D: Es el manejador de que pantalla se debe renderizar
+pManageStages proc
+    push ax
+
+    pManageStages_loop:
+        mov al, currentStage
+
+        JMPIF al, STAGE_GAME, pManageStages_game
+        JMPIF al, STAGE_HOME, pManageStages_home
+        JMPIF al, STAGE_HELP, pManageStages_help
+
+        ; Se cambia a la pantalla de juego
+        pManageStages_game:
+            call pStageGame
+            jmp pManageStages_cons
+        
+        ; Se cambia a la pantalla home
+        pManageStages_home:
+            call pStageHome
+            jmp pManageStages_cons
+
+        ; Se cambia a la pantalla de ayuda
+        pManageStages_help:
+
+        pManageStages_cons:
+
+        mov al, currentStage
+    JMPIFN al, STAGE_QUIT, pManageStages_loop
+
+    pop ax
+
+    ret
+pManageStages endP
+
+;----------------------------
+; End Manejador de pantallas
+;----------------------------
+
 main:
     call pOpen
 
@@ -1089,18 +1552,9 @@ main:
     PUTINMATRIX 4, 3, 0
     PUTINMATRIX 3, 4, 0
 
-    call pGraphicMode 
-    ;call pDrawBoard
-    ;call pDrawCoins
-    ;jmp fin
+    call pGraphicMode
 
-
-
-loopTeclas: ; no sale a menos que sea ESC
-    call pDrawBoard
-    call pDrawCoins
-	call pInput
-	jmp loopTeclas
+    call pManageStages
 
 fin:
     CLOSEM handleRW ; cerramos el archivo de juego
