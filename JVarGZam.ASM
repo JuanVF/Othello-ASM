@@ -70,7 +70,7 @@ datos segment
     homeSelected db 00h
 
     ; Seleccion de pantalla
-    currentStage db STAGE_GAME
+    currentStage db STAGE_HOME
 
     ; Formato archivo:
     ;    Othelo Juego
@@ -149,6 +149,18 @@ pGetKeyPressed proc
     int 16h
     ret
 pGetKeyPressed endP
+
+clearkeyboardbuffer proc 
+; AX is clobbered
+    PUSHS <ax, ds>
+    CLEAN <ax>
+    mov ax, 0040h
+    mov ds, ax
+    mov ax, ds:[001Ah]
+    mov ds:[001Ch], ax
+    POPS <ds, ax>
+    ret
+clearkeyboardbuffer endP
 
 ; E: al= numero + 30h
 ; S: pone el numero en toPlay
@@ -1475,6 +1487,47 @@ pStageGame proc
     ret
 pStageGame endP
 
+; E: AH - Scan Code
+; S: N/A
+; D: Determina como interactuar con el home
+pStageHomeKeys proc
+    push bx
+
+    JMPIFN ah, ENTER_KEY, pStageHomeKeys_left
+
+        JMPIF homeSelected, 0, pStageHomeKeys_game
+            mov currentStage, STAGE_HELP
+
+            jmp pStageHomeKeys_end
+        pStageHomeKeys_game:
+            mov currentStage, STAGE_GAME
+
+            jmp pStageHomeKeys_end
+    ; Evento de tecla izquierda
+    pStageHomeKeys_left:
+    JMPIFN ah, ARROW_LEFT, pStageHomeKeys_right
+        dec homeSelected
+        
+        mov bl, homeSelected
+        JMPIFNS bl, pStageHomeKeys_end
+            mov homeSelected, 1
+        jmp pStageHomeKeys_end
+
+    ; Evento de tecla derecha
+    pStageHomeKeys_right:
+    JMPIFN ah, ARROW_RIGHT, pStageHomeKeys_end
+        inc homeSelected
+        
+        mov bl, homeSelected
+        JMPIFN bl, 2, pStageHomeKeys_end
+            mov homeSelected, 0
+    pStageHomeKeys_end:
+
+    pop bx
+
+    ret
+pStageHomeKeys endP
+
 ; E/S: N/A
 ; D: Este se encarga de renderizar el home
 pStageHome proc
@@ -1485,16 +1538,25 @@ pStageHome proc
     MOVV AN_POINT1_X, 640
     MOVV AN_POINT1_Y, 200
 
+    ; Es necesario que este en un loop para la animacion
+    ; bien fancy -inserte estrellitas-
     pStageHome_loop:
+        CLEAN <ax>
         call pBlackScreen
         call pHomeInfo
         call pHomeAnimation
         call pGetKeyPressed
+        call pStageHomeKeys
 
         JMPIF ah, SCAPE, pStageHome_quit
 
+        ; Se limpia el buffer del teclado
+        ; Esto es sumamente necesario o 
+        ; se va a quedar en bucle, 11h no lo limpia
+        call clearkeyboardbuffer
         call pDelay
-    jmp pStageHome_loop
+    JMPIF currentStage, STAGE_HOME, pStageHome_loop
+    jmp pStageHome_end
     pStageHome_quit:
     mov currentStage, STAGE_QUIT
 
