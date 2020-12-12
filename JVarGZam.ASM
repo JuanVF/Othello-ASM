@@ -84,7 +84,14 @@ datos segment
     ; 1 - Blanco
     ; 2 - Vacio :c
     Matriz db 64 dup(2)
+    Pesos  db 64 dup(00)
     vel db 1, -1, 1, 0, 1, 1, 0, -1, 0, 1, -1, -1, -1, 0, -1, 1 ; posiciones para moverse en la matriz sin hacer un for doble
+
+    possiblePlays dw 256 dup(00h), 00h ; Array de posibles jugadas
+                                  ; FilCol (byte, byte)
+                                  ; Empieza en 1
+                                  ; byte 0 el largo
+    amountPlays equ byte ptr [possiblePlays]
 
     toPlay dw 00h
     turn dw 0 ; 0 = Blanco, 1 = negro ; 0 = filas, 1 = columnas
@@ -150,7 +157,9 @@ pGetKeyPressed proc
     ret
 pGetKeyPressed endP
 
-clearkeyboardbuffer proc 
+; E/S: N/A
+; D: Limpia el buffer del teclado
+pClearkeyboardbuffer proc 
 ; AX is clobbered
     PUSHS <ax, ds>
     CLEAN <ax>
@@ -160,7 +169,7 @@ clearkeyboardbuffer proc
     mov ds:[001Ch], ax
     POPS <ds, ax>
     ret
-clearkeyboardbuffer endP
+pClearkeyboardbuffer endP
 
 ; E: al= numero + 30h
 ; S: pone el numero en toPlay
@@ -382,6 +391,80 @@ pPutPice_equals:
     ret
 pPutPice endp
 
+; E: Las jugadas posibles
+; S: N/A
+; D: Limpia el array de jugadas posibles
+pCleanPossiblePlays proc
+    PUSHS <ax, di>
+
+    lea di, possiblePlays
+
+    pCleanPossiblePlays_loop:
+        mov al, 00h
+        mov [di], al
+
+        inc di
+        mov al, [di]
+    JMPIFN al, 00h, pCleanPossiblePlays_loop
+
+    POPS <di, ax>
+
+    ret
+pCleanPossiblePlays endP
+
+; E: al= fil, ah = col, bl = color
+; S: Posibles jugadas en possiblePlays
+; D: Escribe en el array possiblePlays todas las jugadas
+;    posibles   
+pPossiblePlays proc
+    PUSHS <ax, bx, cx, dx, di>
+    lea di, possiblePlays
+    inc di
+
+    mov cx, 8 ; 8 posiciones a los lados
+    lea si, vel
+
+pPossiblePlays_neighbors:
+
+    mov dl, byte ptr [si] ; vy
+    mov dh, byte ptr [si+1] ; vx
+
+    push ax 
+    add al, dh 
+    add ah, dl
+    GETINMATRIX al, ah
+
+    cmp al, bl  
+    je pPossiblePlays_equals; si lo que esta en ese vecino es igual al color entonces continue
+    pop ax 
+
+    push ax 
+    call pPath
+    
+    cmp al, bl
+    jne pPossiblePlays_equals ; si no encontro path entonces continuamos 
+
+    pop ax 
+    push ax
+
+    ; encontramos path, ponemos esta posicion en jugadas
+    mov byte ptr [di], al
+    mov byte ptr [di+1], ah
+
+    inc di
+    inc di
+
+    inc amountPlays
+pPossiblePlays_equals:
+    pop ax 
+
+    inc si
+    inc si
+    loop pPossiblePlays_neighbors
+
+    POPS <di, dx, cx, bx, ax>
+    ret
+pPossiblePlays endP
 ;----------------------------
 ; End Matrix operations
 ;----------------------------
@@ -1553,7 +1636,7 @@ pStageHome proc
         ; Se limpia el buffer del teclado
         ; Esto es sumamente necesario o 
         ; se va a quedar en bucle, 11h no lo limpia
-        call clearkeyboardbuffer
+        call pClearkeyboardbuffer
         call pDelay
     JMPIF currentStage, STAGE_HOME, pStageHome_loop
     jmp pStageHome_end
@@ -1615,6 +1698,8 @@ main:
     PUTINMATRIX 3, 4, 0
 
     call pGraphicMode
+
+    call pPossiblePlays
 
     call pManageStages
 
