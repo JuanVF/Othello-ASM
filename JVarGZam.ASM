@@ -1,5 +1,5 @@
-include ./code/tareas/num8/macros.ASM
-;include macros.ASM
+;include ./code/tareas/num8/macros.ASM
+include macros.ASM
 
 ; ----------------------------------------------------------
 ; MANDAMIENTOS DE LA PROGRA xD
@@ -48,10 +48,11 @@ datos segment
     handleRW dw ? ; hanlder de lectura escritura
 
     buffy db 128 dup ('\n') ; buffer para R/W
-    header db '   Othelo Juego', 0AH, 'Negras     Blancas', 0AH; 35
+    header db '   Othello Juego', 0AH, 'Negras     Blancas', 0AH; 36
     fileName db 'log0000.txt', 0 ; nombre del archivo
    
     stringToWrite db '  n12        b32', 0AH ;  
+
 
     ; Informacion de la UI
     gameTitle  db "Othello", 00h 
@@ -200,6 +201,7 @@ pPutNumber proc
 pPutNumber_blanca:
 
         ; eran blancas
+        call pWriteString ; lo guardamos en file
         mov byte ptr [turn], 1 ; para que sigan las negras
     jmp pPutNumber_fin
 ;-------- filas --------
@@ -1367,7 +1369,7 @@ pWrite endp
 ; E: HandlerRW
 ; D: escribe la cabecera del archivo 
 pAddHeader proc 
-    WRITEN 35, handleRW, header
+    WRITEN 36, handleRW, header
     ret 
 pAddHeader endp 
 
@@ -1409,7 +1411,7 @@ pCreate endp
 
 ; S: fileName con el nombre del archivo, ax con el numero de handler
 ; D: intenta abrir el archivo log0000.txt, sino existe lo crea, si existe crea su consecutivo
-pOpen proc 
+pOpen proc ; se encarga de crear el archivo
 
  ; abir file:
 	mov ah, 3Dh
@@ -1448,11 +1450,53 @@ pInsertInStr_blancas:
     ret 
 pInsertInStr endp 
 
+; E: filename el nombre 
+; S: handleRW
+; D: abre un archivo que debe existir, y envia el cursor al final de este
+pOpenAndSetEnd proc 
+
+    PUSHS<ax, bx, cx, dx>
+    mov ah, 3Dh ; lo abrimos 
+	lea dx, [filename]
+	mov al, 2 ; RW
+	int 21h
+
+    mov [handlerw], ax
+ 
+    mov ah, 42h
+    mov al, 02h ; end of file
+    mov bx, [handlerw]
+    xor cx, cx
+    xor dx, dx
+    int 21h
+
+    POPS<dx, cx, bx, ax>
+
+    ret 
+pOpenAndSetEnd endp 
 
 ; E: stringToWrite, handleRW
 ; D: escribe al final del archivo los primeros 17 bytes que esten en stringToWrite 
 pWriteString proc 
-    WRITEN 17, handleRW, stringToWrite
+    ; 1. open file
+   
+    call pOpenAndSetEnd
+
+    ; 2. write
+    cmp word ptr turn, 0
+    jne pWriteString_blancas_turn
+
+    WRITEN 13, handlerw, stringToWrite
+
+    jmp pWriteString_fin
+pWriteString_blancas_turn:
+    WRITEN 4, handlerw, stringToWrite+13
+    
+pWriteString_fin:
+
+    ; 3. close file
+    CLOSEM handlerw 
+
     ret 
 pWriteString endp 
 
@@ -1491,7 +1535,8 @@ pStageHomeKeys proc
     JMPIFN ah, ENTER_KEY, pStageHomeKeys_left
 
         JMPIF homeSelected, 0, pStageHomeKeys_game
-            mov currentStage, STAGE_HELP
+;            mov currentStage, STAGE_HELP
+            mov currentStage, STAGE_GAME
 
             jmp pStageHomeKeys_end
         pStageHomeKeys_game:
@@ -1607,6 +1652,7 @@ pManageStages endP
 
 main:
     call pOpen
+    CLOSEM handleRW ; se abre cada que necesitemos el file
 
     ;mov byte ptr [MATRIZ+27], 1
     PUTINMATRIX 3, 3, 1
@@ -1620,7 +1666,7 @@ main:
     call pManageStages
 
 fin:
-    CLOSEM handleRW ; cerramos el archivo de juego
+    
     mov ax, 4C00h    ; protocolo de finalización del programa.
     int 21h
 
