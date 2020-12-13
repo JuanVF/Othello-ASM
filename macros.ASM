@@ -309,6 +309,18 @@ DRAWTEXT macro
     POPS <di, dx, cx, bx, ax>
 endm
 
+DRAWTEXTONSCREEN macro msg, fil, col
+    PUSHS <di, dx>
+
+    lea di, msg
+    mov dh, fil
+    mov dl, col
+    
+    DRAWTEXT
+
+    POPS <dx, di>
+endm
+
 ; E: DH - Linea
 ;    DL - Columna
 ; S: N/A

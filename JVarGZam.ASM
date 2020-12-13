@@ -61,13 +61,21 @@ datos segment
     gamePosTxt db "Pos: ", 00h
     gamePos    db "  ", 00h
     gameAbout  db "F1:", 00h
-    gameAbout2  db "   -Ayuda", 00h
-    gameAbout3  db "   -Acerca de", 00h
+    gameAbout2 db "   -Ayuda", 00h
+    gameAbout3 db "   -Acerca de", 00h
+    gameAbout4 db "F2:", 00h
+    gameAbout5 db "   -Juega IA", 00h
+
+    ; En esta variable se van a poner los mensajes
+    ; La unica restriccion es usar un asciiz
+    gameMessage db 40 dup(" "), 00h
 
     homePlay db "Jugar", 00h
     homeHelp db "Ayuda", 00h
 
     homeSelected db 00h
+
+    isIAPlaying db 00h
 
     ; Seleccion de pantalla
     currentStage db STAGE_HOME
@@ -208,7 +216,21 @@ pPutNumber endp
 ; E: al=ascii, ah=code
 ; D: llama un procedimiento dependiendo de la tecla, sino nada mas retorna
 pSwitchkeys proc 
+    
+    cmp ah, F1_KEY
+    jne pSwitchkeys_f2
 
+    mov currentStage, STAGE_HELP
+
+    jmp pSwitchkeys_noNumero
+pSwitchkeys_f2:
+    cmp ah, F2_KEY
+    jne pSwitchkeys_esc
+
+    mov isIAPlaying, 1
+
+    jmp pSwitchkeys_noNumero
+pSwitchkeys_esc:
     cmp ah, 01; ESCP
     CONEJO je fin
 
@@ -1119,18 +1141,10 @@ pDrawInfo proc
     mov bl, white
 
     ; Se dibuja el titulo del juego
-    lea di, gameTitle
-    mov dh, 2
-    mov dl, 65
-
-    DRAWTEXT
+    DRAWTEXTONSCREEN gameTitle, 2, 65
 
     ; Se escribe el texto de turno
-    lea di, gameTurn
-    mov dh, 4
-    mov dl, 60
-
-    DRAWTEXT
+    DRAWTEXTONSCREEN gameTurn, 4, 60
 
     ; Se dibujan los turnos
     lea di, gameP2
@@ -1145,14 +1159,9 @@ pDrawInfo proc
     DRAWTEXT
 
     ; Se dibuja lo que se ha escrito por teclado
-    lea di, gamePosTxt
-    mov dh, 6
-    mov dl, 60
-
-    DRAWTEXT
+    DRAWTEXTONSCREEN gamePosTxt, 6, 60
 
     lea di, gamePos
-
     mov al, byte ptr [toPlay]
     add al, 30h
     mov [di], al
@@ -1161,30 +1170,22 @@ pDrawInfo proc
     add al, 30h
     mov [di+1], al
 
-    mov dh, 6
-    mov dl, 66
-    lea di, gamePos
-    
-    DRAWTEXT
+    DRAWTEXTONSCREEN gamePos, 6, 64
 
-    ; Mensajes de ayuda
-    lea di, gameAbout
-    mov dh, 8
-    mov dl, 60
-    
-    DRAWTEXT
+    DRAWTEXTONSCREEN gameAbout, 8, 60
 
-    lea di, gameAbout2
-    mov dh, 9
-    mov dl, 60
-    
-    DRAWTEXT
+    DRAWTEXTONSCREEN gameAbout2, 9, 60
 
-    lea di, gameAbout3
-    mov dh, 10
-    mov dl, 60
-    
-    DRAWTEXT
+    DRAWTEXTONSCREEN gameAbout3, 10, 60
+
+    DRAWTEXTONSCREEN gameAbout4, 12, 60
+
+    DRAWTEXTONSCREEN gameAbout5, 13, 60
+
+    ; Aqui se escribe la notificacion
+    ; Solo copie su mensaje a gameMessage y se va a mostrar
+    ; Asegurese que sea ASCIIZ o va a dar errores.
+    DRAWTEXTONSCREEN gameMessage, 1, 10
 
     POPS <di, dx, bx, ax>
     ret
@@ -1296,17 +1297,11 @@ pHomeAnimation endP
 pHomeInfo proc
     PUSHS <ax, bx, cx, dx>
 
-    lea di, gameTitle
-    mov dh, 3
-    mov dl, 33
     mov bl, magenta
 
-    DRAWTEXT
+    DRAWTEXTONSCREEN gameTitle, 3, 33
 
     ; Boton de play
-    lea di, homePlay
-    mov dh, 5
-    mov dl, 30
     mov bl, white
 
     mov al, homeSelected
@@ -1315,12 +1310,9 @@ pHomeInfo proc
 
     pHomeInfo_play_color:
 
-    DRAWTEXT
+    DRAWTEXTONSCREEN homePlay, 5, 30
 
     ; Boton de help
-    lea di, homeHelp
-    mov dh, 5
-    mov dl, 38
     mov bl, white
 
     mov al, homeSelected
@@ -1329,7 +1321,7 @@ pHomeInfo proc
 
     pHomeInfo_help_color:
 
-    DRAWTEXT
+    DRAWTEXTONSCREEN homeHelp, 5, 38
 
     POPS <dx, cx, bx, ax>
     ret
@@ -1482,8 +1474,11 @@ pStageGame proc
         call pDrawPositions
         call pDrawInfo
         call pInput
+        JMPIFN currentStage, STAGE_GAME, pStageGame_end
         jmp pStageGame_loop
     
+    pStageGame_end:
+
     ret
 pStageGame endP
 
@@ -1566,6 +1561,12 @@ pStageHome proc
 pStageHome endP
 
 ; E/S: N/A
+; D: Es el acerca de
+pStageHelp proc
+    ret
+pStageHelp endP
+
+; E/S: N/A
 ; D: Es el manejador de que pantalla se debe renderizar
 pManageStages proc
     push ax
@@ -1589,7 +1590,7 @@ pManageStages proc
 
         ; Se cambia a la pantalla de ayuda
         pManageStages_help:
-
+            call pStageHelp
         pManageStages_cons:
 
         mov al, currentStage
