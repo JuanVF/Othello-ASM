@@ -84,7 +84,14 @@ datos segment
     ; 1 - Blanco
     ; 2 - Vacio :c
     Matriz db 64 dup(2)
-    Pesos  db 64 dup(00)
+    Pesos db 64 dup(1)    
+    possiblePlays dw 256 dup(00h), 00h ; Array de posibles jugadas
+                                       ; FilCol (byte, byte)
+                                       ; Empieza en 1
+                                       ; byte 0 el largo
+                                       
+    amountPlays equ byte ptr [possiblePlays]
+
     vel db 1, -1, 1, 0, 1, 1, 0, -1, 0, 1, -1, -1, -1, 0, -1, 1 ; posiciones para moverse en la matriz sin hacer un for doble
 
     possiblePlays dw 256 dup(00h), 00h ; Array de posibles jugadas
@@ -253,7 +260,7 @@ pInput endp
 ; Start Matrix operations
 ;----------------------------
 
-; E: al= fil, ah = col, bl = color
+; E: al= fil, ah = col, bl = color, di = la matriz
 ; D: pone el numero bl en la matrix, lo unico que valida es que no este fuera de la misma
 pPutInMatrix proc 
 
@@ -271,6 +278,7 @@ pPutInMatrix proc
     jge getInMatr_fin
 
     lea bx, Matriz
+
     add bx, ax
 
     mov byte ptr [bx], dl
@@ -337,7 +345,7 @@ pPath proc
     call pPath
 
     cmp al, bl ; si es igual pintamos esa posicion
-    jne pPath_fin
+    jne pPath_fin   
 
     PUTINMATRIX cl, ch, bl  ; si era igual  
 
@@ -346,6 +354,117 @@ pPath_fin:
     POPS<dx, cx, bx>
     ret 
 pPath endp 
+
+; E: al= fil, ah = col, dl = vx, dh = vy, bl = color
+; S: al con el color
+; D: comienza a buscar en esa direccion, si se encuentra uno de color bl pinta todo el path
+; N: :C
+pIncPossibleWays proc 
+
+    PUSHS<bx, cx, dx>
+
+    add al, dh
+    add ah, dl
+
+    mov cx, ax ; respaldamos ax
+    GETINMATRIXCUSTOM al, ah, Pesos
+    cmp al, 2 ; si es vacio retorna 
+    je pIncPossibleWays_fin
+
+    cmp al, bl; si es igual al color retorna el color
+    je pIncPossibleWays_fin
+
+    ; sino:
+    mov ax, cx; recuperamos
+    call pIncPossibleWays
+
+    cmp al, bl ; si es igual pintamos esa posicion
+    jne pIncPossibleWays_fin   
+
+    PUTINMATRIXCUSTOM cl, ch, bl, Pesos  ; si era igual  
+
+pIncPossibleWays_fin:
+
+    POPS<dx, cx, bx>
+    ret 
+pIncPossibleWays endp 
+
+
+; E: Las jugadas posibles
+; S: N/A
+; D: Limpia el array de jugadas posibles
+pCleanPossiblePlays proc
+    PUSHS <ax, di>
+
+    lea di, possiblePlays
+
+    pCleanPossiblePlays_loop:
+        mov al, 00h
+        mov [di], al
+
+        inc di
+        mov al, [di]
+    JMPIFN al, 00h, pCleanPossiblePlays_loop
+
+    POPS <di, ax>
+
+    ret
+pCleanPossiblePlays endP
+
+; E: al= fil, ah = col, bl = color
+; S: Posibles jugadas en possiblePlays
+; D: Escribe en el array possiblePlays todas las jugadas
+;    posibles   
+pPossiblePlays proc
+    PUSHS <ax, bx, cx, dx, di>
+    lea di, possiblePlays
+    inc di
+
+    mov cx, 8 ; 8 posiciones a los lados
+    lea si, vel
+
+pPossiblePlays_neighbors:
+
+    mov dl, byte ptr [si] ; vy
+    mov dh, byte ptr [si+1] ; vx
+
+    push ax 
+    add al, dh 
+    add ah, dl
+    GETINMATRIX al, ah
+
+    cmp al, bl  
+    je pPossiblePlays_equals; si lo que esta en ese vecino es igual al color entonces continue
+    pop ax 
+
+    push ax 
+    call pPath
+    
+    cmp al, bl
+    jne pPossiblePlays_equals ; si no encontro path entonces continuamos 
+
+    pop ax 
+    push ax
+
+    ; encontramos path, ponemos esta posicion en jugadas
+    mov byte ptr [di], al
+    mov byte ptr [di+1], ah
+    GETINMATRIXCUSTOM al, ah, pesos
+    mov byte ptr [di+2], al
+
+    add di, 03h
+
+    inc amountPlays
+pPossiblePlays_equals:
+    pop ax 
+
+    inc si
+    inc si
+    loop pPossiblePlays_neighbors
+
+    POPS <di, dx, cx, bx, ax>
+    ret
+pPossiblePlays endP
 
 ; E: al= fil, ah = col, bl = color
 ; D: intenta poner una pieza en esa posicion
@@ -1412,7 +1531,14 @@ pHomeInfo proc
 
     pHomeInfo_help_color:
 
-    DRAWTEXT
+    DRAWTEXTONSCREEN homeHelp, 9, 50
+
+    ; Info de ayuda para la UI
+    mov bl, darkGray
+
+    DRAWTEXTONSCREEN homeInfo, 2, 2
+    DRAWTEXTONSCREEN homeInfo2, 2, 18
+    DRAWTEXTONSCREEN homeInfo3, 2, 38
 
     POPS <dx, cx, bx, ax>
     ret

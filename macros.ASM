@@ -484,6 +484,88 @@ PUTINMATRIXPLAY macro fil, col, color
     pop ax
 endm
 
+;-------------
+; :c perdon
+;-------------
+
+; E: fil, col, color
+; D: pone el numero bl en la matrix, lo unico que valida es que no este fuera de la misma
+; N: Tuve que poner otro porque no se si modificar su 
+;    macro o proc implica caerle encima a toda la progra
+;    es cerdo, pero era lo mas rapido...
+PUTINMATRIXCUSTOM macro fil, col, color, mat
+    local tag
+
+    push ax 
+    push bx
+
+    mov al, fil
+    mov ah, col 
+    mov bl, color 
+
+    PUSHS<ax, bx, dx>
+
+    mov dl, bl ; respaldamos el color
+    mov bl, 8
+
+    mov bh, ah ; respaldamos la columna
+    xor ah, ah
+    mul bl ; fil * 8
+
+    add al, bh ; fil * 8 + colum
+    cmp ax, 64
+    jge tag
+
+    lea bx, mat
+
+    add bx, ax
+
+    mov byte ptr [bx], dl
+
+tag:
+    POPS<dx, bx, ax>
+
+    pop bx
+    pop ax
+endm
+
+; E: 2 numeros entre 0-7
+; S: retorna en el al
+; D: retorna lo que esta en esa posicion, si esta fuera de la matrix entonces retorna vacio
+GETINMATRIXCUSTOM macro fil, col, mat
+    local tag1
+    local tag2
+
+    mov al, fil
+    mov ah, col
+
+    push bx
+
+    mov bl, 8
+
+    mov bh, ah ; respaldamos la columna
+    xor ah, ah
+    mul bl ; fil * 8
+
+    add al, bh ; fil * 8 + colum
+    cmp ax, 64
+    jge tag1
+
+    lea bx, mat
+    add bx, ax
+
+    mov al, byte ptr [bx]
+    jmp tag2
+
+tag1:
+    mov al, 2 ; vacio
+
+tag2:
+    pop bx
+
+    ret 
+endm
+
 ;-------------------------
 ; End Matrix things
 ;-------------------------
