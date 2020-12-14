@@ -48,10 +48,11 @@ datos segment
     handleRW dw ? ; hanlder de lectura escritura
 
     buffy db 128 dup ('\n') ; buffer para R/W
-    header db '   Othelo Juego', 0AH, 'Negras     Blancas', 0AH; 35
+    header db '   Othello Juego', 0AH, 'Negras     Blancas', 0AH; 36
     fileName db 'log0000.txt', 0 ; nombre del archivo
    
     stringToWrite db '  n12        b32', 0AH ;  
+
 
     ; Informacion de la UI
     gameTitle  db "Othello", 00h 
@@ -61,13 +62,47 @@ datos segment
     gamePosTxt db "Pos: ", 00h
     gamePos    db "  ", 00h
     gameAbout  db "F1:", 00h
-    gameAbout2  db "   -Ayuda", 00h
-    gameAbout3  db "   -Acerca de", 00h
+    gameAbout2 db "   -Ayuda", 00h
+    gameAbout3 db "   -Acerca de", 00h
+    gameAbout4 db "F2:", 00h
+    gameAbout5 db "   -Juega IA", 00h
+    gameAbout6 db "ESC:", 00h
+    gameAbout7 db "   -Sale de la app", 00h
 
-    homePlay db "Jugar", 00h
+    ; En esta variable se van a poner los mensajes
+    ; La unica restriccion es usar un asciiz
+    gameMessage db 40 dup(" "), 00h
+
+    homePlayB db "Jugar con negras", 00h
+    homePlayW db "Jugar con blancas", 00h
     homeHelp db "Ayuda", 00h
 
+    homeInfo  db "Teclas de uso:", 00h
+    homeInfo2 db "Flechas: [<-][->]", 00h
+    homeInfo3 db "Acceder: [Enter]", 00h
+
+    ; Esto le permite a la pantalla de ayuda saber de donde vuelve
+    aboutFrom db STAGE_HOME
+
+    aboutInfo  db "Autores: Vargas-Juan && Zamora-Gerald Programa: Othello", 00h
+    aboutInfo2 db "Desc: Juego del Othello con IA integrada", 00h
+    aboutInfo3 db "-Ayuda- ", 00h
+    aboutInfo4 db "Pantalla Inicio: ", 00h
+    aboutInfo5 db "- Esc: salir del juego", 00h
+    aboutInfo6 db "- Flecha <-: seleccionar opcion de la izquierda", 00h
+    aboutInfo7 db "- Flecha ->: seleccionar opcion de la derecha", 00h
+    aboutInfo8 db "- Enter: entra a la opcion seleccionada", 00h
+    aboutInfo9 db "Pantalla Juego: ", 00h
+    aboutInfo10 db "- F1 - Entra a esta pantalla de ayuda", 00h
+    aboutInfo11 db "- F2 - La IA juega el movimiento actual", 00h
+    aboutInfo12 db "- Esc: salir del juego", 00h
+    aboutInfo13 db "- Entrada de juego: digitar numeros (0-7)", 00h
+    aboutInfo14 db "Pantalla Ayuda: ", 00h
+    aboutInfo15 db "- Esc: vuelve a la pantalla anterior", 00h
+
     homeSelected db 00h
+
+    isIAPlaying db 00h
 
     ; Seleccion de pantalla
     currentStage db STAGE_HOME
@@ -85,20 +120,15 @@ datos segment
     ; 2 - Vacio :c
     Matriz db 64 dup(2)
     Pesos db 64 dup(1)    
-    possiblePlays dw 256 dup(00h), 00h ; Array de posibles jugadas
-                                       ; FilCol (byte, byte)
-                                       ; Empieza en 1
-                                       ; byte 0 el largo
-                                       
-    amountPlays equ byte ptr [possiblePlays]
-
-    vel db 1, -1, 1, 0, 1, 1, 0, -1, 0, 1, -1, -1, -1, 0, -1, 1 ; posiciones para moverse en la matriz sin hacer un for doble
 
     possiblePlays dw 256 dup(00h), 00h ; Array de posibles jugadas
                                   ; FilCol (byte, byte)
                                   ; Empieza en 1
                                   ; byte 0 el largo
     amountPlays equ byte ptr [possiblePlays]
+    
+    vel db 1, -1, 1, 0, 1, 1, 0, -1, 0, 1, -1, -1, -1, 0, -1, 1 ; posiciones para moverse en la matriz sin hacer un for doble
+
 
     toPlay dw 00h
     turn dw 0 ; 0 = Blanco, 1 = negro ; 0 = filas, 1 = columnas
@@ -145,6 +175,13 @@ pDelay proc
     ret
 pDelay endP 
 
+; E/S: N/A
+; D: Este es el procedimiento vacio
+; N: E
+pInitGame proc
+    ret
+pInitGame endP
+
 ;----------------------------
 ; End Utils
 ;----------------------------
@@ -178,6 +215,12 @@ pClearkeyboardbuffer proc
     ret
 pClearkeyboardbuffer endP
 
+; D: recetea el siguiente movimiento a columna
+pResetPosition proc 
+    mov byte ptr [turn+1], 0 ; 0 = filas, 1 = columnas
+    ret 
+pResetPosition endP 
+
 ; E: al= numero + 30h
 ; S: pone el numero en toPlay
 ; D: cuando precionan un numero, lo pone en la columna o fila, dependiendo de [turn+1]
@@ -194,6 +237,9 @@ pPutNumber proc
     mov byte ptr [toplay+1], al ; movemos el numero a las columnas
 
     PUTINMATRIXPLAY <byte ptr[toplay]>, <byte ptr[toplay+1]>, <byte ptr[turn]> ; en la matriz
+    cmp di, 0
+    CALLIFANDRET je, pResetPosition ; si no se pudo jugar esa posicion
+
     INSERTPLAY <byte ptr[toplay]>, <byte ptr[toplay+1]>, <byte ptr[turn]> ; en el string
 
     mov byte ptr [turn+1], 0 ; para que sigan las filas de nuevo 
@@ -208,6 +254,7 @@ pPutNumber proc
 pPutNumber_blanca:
 
         ; eran blancas
+        call pWriteString ; lo guardamos en file
         mov byte ptr [turn], 1 ; para que sigan las negras
     jmp pPutNumber_fin
 ;-------- filas --------
@@ -224,7 +271,22 @@ pPutNumber endp
 ; E: al=ascii, ah=code
 ; D: llama un procedimiento dependiendo de la tecla, sino nada mas retorna
 pSwitchkeys proc 
+    
+    cmp ah, F1_KEY
+    jne pSwitchkeys_f2
 
+    mov aboutFrom, STAGE_GAME
+    mov currentStage, STAGE_HELP
+
+    jmp pSwitchkeys_noNumero
+pSwitchkeys_f2:
+    cmp ah, F2_KEY
+    jne pSwitchkeys_esc
+
+    mov isIAPlaying, 1
+
+    jmp pSwitchkeys_noNumero
+pSwitchkeys_esc:
     cmp ah, 01; ESCP
     CONEJO je fin
 
@@ -467,6 +529,7 @@ pPossiblePlays_equals:
 pPossiblePlays endP
 
 ; E: al= fil, ah = col, bl = color
+; S: di = 0 si no se pudo jugar esa posicion
 ; D: intenta poner una pieza en esa posicion
 pPutPice proc 
 
@@ -474,6 +537,7 @@ pPutPice proc
 
     mov cx, 8 ; 8 posiciones a los lados
     lea si, vel
+    xor di, di ; flag if hubo jugada, 0 = no, 1 = si
 
 pPutPice_neighbors:
 
@@ -494,7 +558,8 @@ pPutPice_neighbors:
     
     cmp al, bl
     jne pPutPice_equals ; si no encontro path entonces continuamos 
-
+    
+    mov di, 1
     pop ax 
     push ax
     PUTINMATRIX al, ah, bl ; encontramos path, ponemos esta posicion
@@ -509,81 +574,6 @@ pPutPice_equals:
     POPS<dx, cx, bx, ax>
     ret
 pPutPice endp
-
-; E: Las jugadas posibles
-; S: N/A
-; D: Limpia el array de jugadas posibles
-pCleanPossiblePlays proc
-    PUSHS <ax, di>
-
-    lea di, possiblePlays
-
-    pCleanPossiblePlays_loop:
-        mov al, 00h
-        mov [di], al
-
-        inc di
-        mov al, [di]
-    JMPIFN al, 00h, pCleanPossiblePlays_loop
-
-    POPS <di, ax>
-
-    ret
-pCleanPossiblePlays endP
-
-; E: al= fil, ah = col, bl = color
-; S: Posibles jugadas en possiblePlays
-; D: Escribe en el array possiblePlays todas las jugadas
-;    posibles   
-pPossiblePlays proc
-    PUSHS <ax, bx, cx, dx, di>
-    lea di, possiblePlays
-    inc di
-
-    mov cx, 8 ; 8 posiciones a los lados
-    lea si, vel
-
-pPossiblePlays_neighbors:
-
-    mov dl, byte ptr [si] ; vy
-    mov dh, byte ptr [si+1] ; vx
-
-    push ax 
-    add al, dh 
-    add ah, dl
-    GETINMATRIX al, ah
-
-    cmp al, bl  
-    je pPossiblePlays_equals; si lo que esta en ese vecino es igual al color entonces continue
-    pop ax 
-
-    push ax 
-    call pPath
-    
-    cmp al, bl
-    jne pPossiblePlays_equals ; si no encontro path entonces continuamos 
-
-    pop ax 
-    push ax
-
-    ; encontramos path, ponemos esta posicion en jugadas
-    mov byte ptr [di], al
-    mov byte ptr [di+1], ah
-
-    inc di
-    inc di
-
-    inc amountPlays
-pPossiblePlays_equals:
-    pop ax 
-
-    inc si
-    inc si
-    loop pPossiblePlays_neighbors
-
-    POPS <di, dx, cx, bx, ax>
-    ret
-pPossiblePlays endP
 ;----------------------------
 ; End Matrix operations
 ;----------------------------
@@ -1321,18 +1311,10 @@ pDrawInfo proc
     mov bl, white
 
     ; Se dibuja el titulo del juego
-    lea di, gameTitle
-    mov dh, 2
-    mov dl, 65
-
-    DRAWTEXT
+    DRAWTEXTONSCREEN gameTitle, 2, 65
 
     ; Se escribe el texto de turno
-    lea di, gameTurn
-    mov dh, 4
-    mov dl, 60
-
-    DRAWTEXT
+    DRAWTEXTONSCREEN gameTurn, 4, 60
 
     ; Se dibujan los turnos
     lea di, gameP2
@@ -1347,14 +1329,9 @@ pDrawInfo proc
     DRAWTEXT
 
     ; Se dibuja lo que se ha escrito por teclado
-    lea di, gamePosTxt
-    mov dh, 6
-    mov dl, 60
-
-    DRAWTEXT
+    DRAWTEXTONSCREEN gamePosTxt, 6, 60
 
     lea di, gamePos
-
     mov al, byte ptr [toPlay]
     add al, 30h
     mov [di], al
@@ -1363,30 +1340,26 @@ pDrawInfo proc
     add al, 30h
     mov [di+1], al
 
-    mov dh, 6
-    mov dl, 66
-    lea di, gamePos
-    
-    DRAWTEXT
+    DRAWTEXTONSCREEN gamePos, 6, 64
 
-    ; Mensajes de ayuda
-    lea di, gameAbout
-    mov dh, 8
-    mov dl, 60
-    
-    DRAWTEXT
+    DRAWTEXTONSCREEN gameAbout, 8, 60
 
-    lea di, gameAbout2
-    mov dh, 9
-    mov dl, 60
-    
-    DRAWTEXT
+    DRAWTEXTONSCREEN gameAbout2, 9, 60
 
-    lea di, gameAbout3
-    mov dh, 10
-    mov dl, 60
-    
-    DRAWTEXT
+    DRAWTEXTONSCREEN gameAbout3, 10, 60
+
+    DRAWTEXTONSCREEN gameAbout4, 12, 60
+
+    DRAWTEXTONSCREEN gameAbout5, 13, 60
+
+    DRAWTEXTONSCREEN gameAbout6, 15, 60
+
+    DRAWTEXTONSCREEN gameAbout7, 16, 60
+
+    ; Aqui se escribe la notificacion
+    ; Solo copie su mensaje a gameMessage y se va a mostrar
+    ; Asegurese que sea ASCIIZ o va a dar errores.
+    DRAWTEXTONSCREEN gameMessage, 1, 10
 
     POPS <di, dx, bx, ax>
     ret
@@ -1498,35 +1471,37 @@ pHomeAnimation endP
 pHomeInfo proc
     PUSHS <ax, bx, cx, dx>
 
-    lea di, gameTitle
-    mov dh, 3
-    mov dl, 33
     mov bl, magenta
 
-    DRAWTEXT
+    DRAWTEXTONSCREEN gameTitle, 6, 33
 
-    ; Boton de play
-    lea di, homePlay
-    mov dh, 5
-    mov dl, 30
+    ; Boton de play en blancas
     mov bl, white
 
     mov al, homeSelected
-    JMPIF al, 01h, pHomeInfo_play_color
+    JMPIFN al, 00h, pHomeInfo_playw_color
         mov bl, lighBlue
 
-    pHomeInfo_play_color:
+    pHomeInfo_playw_color:
 
-    DRAWTEXT
+    DRAWTEXTONSCREEN homePlayW, 9, 10
 
-    ; Boton de help
-    lea di, homeHelp
-    mov dh, 5
-    mov dl, 38
+    ; Boton de play en negras
     mov bl, white
 
     mov al, homeSelected
-    JMPIF al, 00h, pHomeInfo_help_color
+    JMPIFN al, 01h, pHomeInfo_playb_color
+        mov bl, lighBlue
+
+    pHomeInfo_playb_color:
+
+    DRAWTEXTONSCREEN homePlayB, 9, 30
+
+    ; Boton de help
+    mov bl, white
+
+    mov al, homeSelected
+    JMPIFN al, 02h, pHomeInfo_help_color
         mov bl, lighBlue
 
     pHomeInfo_help_color:
@@ -1543,6 +1518,34 @@ pHomeInfo proc
     POPS <dx, cx, bx, ax>
     ret
 pHomeInfo endP
+
+; E/S: N/A
+; D: Escribe la info del acerca de y la ayuda
+pAboutInfo proc
+    push bx
+
+    mov bl, white
+
+    DRAWTEXTONSCREEN aboutInfo, 1, 1
+    DRAWTEXTONSCREEN aboutInfo2, 2, 1
+    DRAWTEXTONSCREEN aboutInfo3, 3, 1
+    DRAWTEXTONSCREEN aboutInfo4, 4, 1
+    DRAWTEXTONSCREEN aboutInfo5, 5, 1
+    DRAWTEXTONSCREEN aboutInfo6, 6, 1
+    DRAWTEXTONSCREEN aboutInfo7, 7, 1
+    DRAWTEXTONSCREEN aboutInfo8, 8, 1
+    DRAWTEXTONSCREEN aboutInfo9, 9, 1
+    DRAWTEXTONSCREEN aboutInfo10, 10, 1
+    DRAWTEXTONSCREEN aboutInfo11, 11, 1
+    DRAWTEXTONSCREEN aboutInfo12, 12, 1
+    DRAWTEXTONSCREEN aboutInfo13, 13, 1
+    DRAWTEXTONSCREEN aboutInfo14, 14, 1
+    DRAWTEXTONSCREEN aboutInfo15, 15, 1
+
+    pop bx
+
+    ret
+pAboutInfo endP
 
 ;----------------------------
 ; End Render
@@ -1584,7 +1587,7 @@ pWrite endp
 ; E: HandlerRW
 ; D: escribe la cabecera del archivo 
 pAddHeader proc 
-    WRITEN 35, handleRW, header
+    WRITEN 36, handleRW, header
     ret 
 pAddHeader endp 
 
@@ -1626,7 +1629,7 @@ pCreate endp
 
 ; S: fileName con el nombre del archivo, ax con el numero de handler
 ; D: intenta abrir el archivo log0000.txt, sino existe lo crea, si existe crea su consecutivo
-pOpen proc 
+pOpen proc ; se encarga de crear el archivo
 
  ; abir file:
 	mov ah, 3Dh
@@ -1665,11 +1668,53 @@ pInsertInStr_blancas:
     ret 
 pInsertInStr endp 
 
+; E: filename el nombre 
+; S: handleRW
+; D: abre un archivo que debe existir, y envia el cursor al final de este
+pOpenAndSetEnd proc 
+
+    PUSHS<ax, bx, cx, dx>
+    mov ah, 3Dh ; lo abrimos 
+	lea dx, [filename]
+	mov al, 2 ; RW
+	int 21h
+
+    mov [handlerw], ax
+ 
+    mov ah, 42h
+    mov al, 02h ; end of file
+    mov bx, [handlerw]
+    xor cx, cx
+    xor dx, dx
+    int 21h
+
+    POPS<dx, cx, bx, ax>
+
+    ret 
+pOpenAndSetEnd endp 
 
 ; E: stringToWrite, handleRW
 ; D: escribe al final del archivo los primeros 17 bytes que esten en stringToWrite 
 pWriteString proc 
-    WRITEN 17, handleRW, stringToWrite
+    ; 1. open file
+   
+    call pOpenAndSetEnd
+
+    ; 2. write
+    cmp byte ptr turn, 0
+    jne pWriteString_blancas_turn
+
+    WRITEN 13, handlerw, stringToWrite
+
+    jmp pWriteString_fin
+pWriteString_blancas_turn:
+    WRITEN 4, handlerw, stringToWrite+13
+    
+pWriteString_fin:
+
+    ; 3. close file
+    CLOSEM handlerw 
+
     ret 
 pWriteString endp 
 
@@ -1691,8 +1736,11 @@ pStageGame proc
         call pDrawPositions
         call pDrawInfo
         call pInput
+        JMPIFN currentStage, STAGE_GAME, pStageGame_end
         jmp pStageGame_loop
     
+    pStageGame_end:
+
     ret
 pStageGame endP
 
@@ -1704,12 +1752,20 @@ pStageHomeKeys proc
 
     JMPIFN ah, ENTER_KEY, pStageHomeKeys_left
 
-        JMPIF homeSelected, 0, pStageHomeKeys_game
+        JMPIFN homeSelected, 2, pStageHomeKeys_game_b
+            mov aboutFrom, STAGE_HOME
             mov currentStage, STAGE_HELP
 
             jmp pStageHomeKeys_end
-        pStageHomeKeys_game:
+        pStageHomeKeys_game_b:
+        JMPIFN homeSelected, 0, pStageHomeKeys_game_w
             mov currentStage, STAGE_GAME
+            mov turn, 1
+
+            jmp pStageHomeKeys_end
+        pStageHomeKeys_game_w:
+            mov currentStage, STAGE_GAME
+            mov turn, 0
 
             jmp pStageHomeKeys_end
     ; Evento de tecla izquierda
@@ -1719,7 +1775,7 @@ pStageHomeKeys proc
         
         mov bl, homeSelected
         JMPIFNS bl, pStageHomeKeys_end
-            mov homeSelected, 1
+            mov homeSelected, 2
         jmp pStageHomeKeys_end
 
     ; Evento de tecla derecha
@@ -1728,7 +1784,7 @@ pStageHomeKeys proc
         inc homeSelected
         
         mov bl, homeSelected
-        JMPIFN bl, 2, pStageHomeKeys_end
+        JMPIFN bl, 3, pStageHomeKeys_end
             mov homeSelected, 0
     pStageHomeKeys_end:
 
@@ -1775,6 +1831,30 @@ pStageHome proc
 pStageHome endP
 
 ; E/S: N/A
+; D: Es el acerca de
+pStageHelp proc
+    push ax
+
+    pStageHelp_loop:
+
+    ; Escribimos la info
+    call pBlackScreen
+    call pAboutInfo
+
+    mov ah, 10h
+    int 16h
+
+    JMPIFN ah, SCAPE, pStageHelp_loop
+    
+    mov al, aboutFrom
+    mov currentStage, al
+
+    pop ax
+
+    ret
+pStageHelp endP
+
+; E/S: N/A
 ; D: Es el manejador de que pantalla se debe renderizar
 pManageStages proc
     push ax
@@ -1788,6 +1868,8 @@ pManageStages proc
 
         ; Se cambia a la pantalla de juego
         pManageStages_game:
+        ; Aqui se inicia el juego
+            call pInitGame
             call pStageGame
             jmp pManageStages_cons
         
@@ -1798,7 +1880,8 @@ pManageStages proc
 
         ; Se cambia a la pantalla de ayuda
         pManageStages_help:
-
+            call pStageHelp
+            jmp pManageStages_loop
         pManageStages_cons:
 
         mov al, currentStage
@@ -1815,6 +1898,7 @@ pManageStages endP
 
 main:
     call pOpen
+    CLOSEM handleRW ; se abre cada que necesitemos el file
 
     ;mov byte ptr [MATRIZ+27], 1
     PUTINMATRIX 3, 3, 1
@@ -1830,7 +1914,7 @@ main:
     call pManageStages
 
 fin:
-    CLOSEM handleRW ; cerramos el archivo de juego
+    
     mov ax, 4C00h    ; protocolo de finalización del programa.
     int 21h
 
