@@ -65,13 +65,39 @@ datos segment
     gameAbout3 db "   -Acerca de", 00h
     gameAbout4 db "F2:", 00h
     gameAbout5 db "   -Juega IA", 00h
+    gameAbout6 db "ESC:", 00h
+    gameAbout7 db "   -Sale de la app", 00h
 
     ; En esta variable se van a poner los mensajes
     ; La unica restriccion es usar un asciiz
     gameMessage db 40 dup(" "), 00h
 
-    homePlay db "Jugar", 00h
+    homePlayB db "Jugar con negras", 00h
+    homePlayW db "Jugar con blancas", 00h
     homeHelp db "Ayuda", 00h
+
+    homeInfo  db "Teclas de uso:", 00h
+    homeInfo2 db "Flechas: [<-][->]", 00h
+    homeInfo3 db "Acceder: [Enter]", 00h
+
+    ; Esto le permite a la pantalla de ayuda saber de donde vuelve
+    aboutFrom db STAGE_HOME
+
+    aboutInfo  db "Autores: Vargas-Juan && Zamora-Gerald Programa: Othello", 00h
+    aboutInfo2 db "Desc: Juego del Othello con IA integrada", 00h
+    aboutInfo3 db "-Ayuda- ", 00h
+    aboutInfo4 db "Pantalla Inicio: ", 00h
+    aboutInfo5 db "- Esc: salir del juego", 00h
+    aboutInfo6 db "- Flecha <-: seleccionar opcion de la izquierda", 00h
+    aboutInfo7 db "- Flecha ->: seleccionar opcion de la derecha", 00h
+    aboutInfo8 db "- Enter: entra a la opcion seleccionada", 00h
+    aboutInfo9 db "Pantalla Juego: ", 00h
+    aboutInfo10 db "- F1 - Entra a esta pantalla de ayuda", 00h
+    aboutInfo11 db "- F2 - La IA juega el movimiento actual", 00h
+    aboutInfo12 db "- Esc: salir del juego", 00h
+    aboutInfo13 db "- Entrada de juego: digitar numeros (0-7)", 00h
+    aboutInfo14 db "Pantalla Ayuda: ", 00h
+    aboutInfo15 db "- Esc: vuelve a la pantalla anterior", 00h
 
     homeSelected db 00h
 
@@ -138,6 +164,13 @@ pDelay proc
 
     ret
 pDelay endP 
+
+; E/S: N/A
+; D: Este es el procedimiento vacio
+; N: E
+pInitGame proc
+    ret
+pInitGame endP
 
 ;----------------------------
 ; End Utils
@@ -220,6 +253,7 @@ pSwitchkeys proc
     cmp ah, F1_KEY
     jne pSwitchkeys_f2
 
+    mov aboutFrom, STAGE_GAME
     mov currentStage, STAGE_HELP
 
     jmp pSwitchkeys_noNumero
@@ -1182,6 +1216,10 @@ pDrawInfo proc
 
     DRAWTEXTONSCREEN gameAbout5, 13, 60
 
+    DRAWTEXTONSCREEN gameAbout6, 15, 60
+
+    DRAWTEXTONSCREEN gameAbout7, 16, 60
+
     ; Aqui se escribe la notificacion
     ; Solo copie su mensaje a gameMessage y se va a mostrar
     ; Asegurese que sea ASCIIZ o va a dar errores.
@@ -1299,33 +1337,79 @@ pHomeInfo proc
 
     mov bl, magenta
 
-    DRAWTEXTONSCREEN gameTitle, 3, 33
+    DRAWTEXTONSCREEN gameTitle, 6, 33
 
-    ; Boton de play
+    ; Boton de play en blancas
     mov bl, white
 
     mov al, homeSelected
-    JMPIF al, 01h, pHomeInfo_play_color
+    JMPIFN al, 00h, pHomeInfo_playw_color
         mov bl, lighBlue
 
-    pHomeInfo_play_color:
+    pHomeInfo_playw_color:
 
-    DRAWTEXTONSCREEN homePlay, 5, 30
+    DRAWTEXTONSCREEN homePlayW, 9, 10
+
+    ; Boton de play en negras
+    mov bl, white
+
+    mov al, homeSelected
+    JMPIFN al, 01h, pHomeInfo_playb_color
+        mov bl, lighBlue
+
+    pHomeInfo_playb_color:
+
+    DRAWTEXTONSCREEN homePlayB, 9, 30
 
     ; Boton de help
     mov bl, white
 
     mov al, homeSelected
-    JMPIF al, 00h, pHomeInfo_help_color
+    JMPIFN al, 02h, pHomeInfo_help_color
         mov bl, lighBlue
 
     pHomeInfo_help_color:
 
-    DRAWTEXTONSCREEN homeHelp, 5, 38
+    DRAWTEXTONSCREEN homeHelp, 9, 50
+
+    ; Info de ayuda para la UI
+    mov bl, lightGray
+
+    DRAWTEXTONSCREEN homeInfo, 2, 2
+    DRAWTEXTONSCREEN homeInfo2, 2, 18
+    DRAWTEXTONSCREEN homeInfo3, 2, 38
 
     POPS <dx, cx, bx, ax>
     ret
 pHomeInfo endP
+
+; E/S: N/A
+; D: Escribe la info del acerca de y la ayuda
+pAboutInfo proc
+    push bx
+
+    mov bl, white
+
+    DRAWTEXTONSCREEN aboutInfo, 1, 1
+    DRAWTEXTONSCREEN aboutInfo2, 2, 1
+    DRAWTEXTONSCREEN aboutInfo3, 3, 1
+    DRAWTEXTONSCREEN aboutInfo4, 4, 1
+    DRAWTEXTONSCREEN aboutInfo5, 5, 1
+    DRAWTEXTONSCREEN aboutInfo6, 6, 1
+    DRAWTEXTONSCREEN aboutInfo7, 7, 1
+    DRAWTEXTONSCREEN aboutInfo8, 8, 1
+    DRAWTEXTONSCREEN aboutInfo9, 9, 1
+    DRAWTEXTONSCREEN aboutInfo10, 10, 1
+    DRAWTEXTONSCREEN aboutInfo11, 11, 1
+    DRAWTEXTONSCREEN aboutInfo12, 12, 1
+    DRAWTEXTONSCREEN aboutInfo13, 13, 1
+    DRAWTEXTONSCREEN aboutInfo14, 14, 1
+    DRAWTEXTONSCREEN aboutInfo15, 15, 1
+
+    pop bx
+
+    ret
+pAboutInfo endP
 
 ;----------------------------
 ; End Render
@@ -1490,12 +1574,20 @@ pStageHomeKeys proc
 
     JMPIFN ah, ENTER_KEY, pStageHomeKeys_left
 
-        JMPIF homeSelected, 0, pStageHomeKeys_game
+        JMPIFN homeSelected, 2, pStageHomeKeys_game_b
+            mov aboutFrom, STAGE_HOME
             mov currentStage, STAGE_HELP
 
             jmp pStageHomeKeys_end
-        pStageHomeKeys_game:
+        pStageHomeKeys_game_b:
+        JMPIFN homeSelected, 0, pStageHomeKeys_game_w
             mov currentStage, STAGE_GAME
+            mov turn, 1
+
+            jmp pStageHomeKeys_end
+        pStageHomeKeys_game_w:
+            mov currentStage, STAGE_GAME
+            mov turn, 0
 
             jmp pStageHomeKeys_end
     ; Evento de tecla izquierda
@@ -1505,7 +1597,7 @@ pStageHomeKeys proc
         
         mov bl, homeSelected
         JMPIFNS bl, pStageHomeKeys_end
-            mov homeSelected, 1
+            mov homeSelected, 2
         jmp pStageHomeKeys_end
 
     ; Evento de tecla derecha
@@ -1514,7 +1606,7 @@ pStageHomeKeys proc
         inc homeSelected
         
         mov bl, homeSelected
-        JMPIFN bl, 2, pStageHomeKeys_end
+        JMPIFN bl, 3, pStageHomeKeys_end
             mov homeSelected, 0
     pStageHomeKeys_end:
 
@@ -1563,6 +1655,24 @@ pStageHome endP
 ; E/S: N/A
 ; D: Es el acerca de
 pStageHelp proc
+    push ax
+
+    pStageHelp_loop:
+
+    ; Escribimos la info
+    call pBlackScreen
+    call pAboutInfo
+
+    mov ah, 10h
+    int 16h
+
+    JMPIFN ah, SCAPE, pStageHelp_loop
+    
+    mov al, aboutFrom
+    mov currentStage, al
+
+    pop ax
+
     ret
 pStageHelp endP
 
@@ -1580,6 +1690,8 @@ pManageStages proc
 
         ; Se cambia a la pantalla de juego
         pManageStages_game:
+        ; Aqui se inicia el juego
+            call pInitGame
             call pStageGame
             jmp pManageStages_cons
         
@@ -1591,6 +1703,7 @@ pManageStages proc
         ; Se cambia a la pantalla de ayuda
         pManageStages_help:
             call pStageHelp
+            jmp pManageStages_loop
         pManageStages_cons:
 
         mov al, currentStage
