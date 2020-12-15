@@ -55,19 +55,21 @@ datos segment
 
 
     ; Informacion de la UI
-    gameTitle  db "Othello", 00h 
-    gameTurn   db "Turno de:", 00h
-    gameP1     db "blancas",00h
-    gameP2     db " negras", 00h
-    gamePosTxt db "Pos: ", 00h
-    gamePos    db "  ", 00h
-    gameAbout  db "F1:", 00h
-    gameAbout2 db "   -Ayuda", 00h
-    gameAbout3 db "   -Acerca de", 00h
-    gameAbout4 db "F2:", 00h
-    gameAbout5 db "   -Juega IA", 00h
-    gameAbout6 db "ESC:", 00h
-    gameAbout7 db "   -Sale de la app", 00h
+    gameTitle   db "Othello", 00h 
+    gameTurn    db "Turno de:", 00h
+    gameP1      db "blancas",00h
+    gameP2      db " negras", 00h
+    gameWAmount db "Negras: 02", 00h ; Empieza en el 8
+    gameBAmount db "Blancas: 02", 00h ; Empieza en el 9
+    gamePosTxt  db "Pos: ", 00h
+    gamePos     db "  ", 00h
+    gameAbout   db "F1:", 00h
+    gameAbout2  db "   -Ayuda", 00h
+    gameAbout3  db "   -Acerca de", 00h
+    gameAbout4  db "F2:", 00h
+    gameAbout5  db "   -Juega IA", 00h
+    gameAbout6  db "ESC:", 00h
+    gameAbout7  db "   -Sale de la app", 00h
 
     ; En esta variable se van a poner los mensajes
     ; La unica restriccion es usar un asciiz
@@ -120,6 +122,8 @@ datos segment
     ; 2 - Vacio :c
     Matriz db 64 dup(2)
     Pesos db 64 dup(1)    
+
+    amountTokens dw 00h ; Cantidad de fichas (blancos - negros)
 
     possiblePlays dw 256 dup(00h), 00h ; Array de posibles jugadas
                                   ; FilCol (byte, byte)
@@ -1356,6 +1360,10 @@ pDrawInfo proc
 
     DRAWTEXTONSCREEN gameAbout7, 16, 60
 
+    DRAWTEXTONSCREEN gameWAmount, 18, 60
+
+    DRAWTEXTONSCREEN gameBAmount, 19, 60
+
     ; Aqui se escribe la notificacion
     ; Solo copie su mensaje a gameMessage y se va a mostrar
     ; Asegurese que sea ASCIIZ o va a dar errores.
@@ -1750,6 +1758,7 @@ pStageGame endP
 pStageHomeKeys proc
     push bx
 
+    ; Evento de enter
     JMPIFN ah, ENTER_KEY, pStageHomeKeys_left
 
         JMPIFN homeSelected, 2, pStageHomeKeys_game_b
