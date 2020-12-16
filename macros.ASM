@@ -466,6 +466,13 @@ GETINMATRIX macro fil, col
 endm
 
 
+
+GETINMATRIXWEIGHTS macro fil, col
+    mov al, fil
+    mov ah, col
+    call pGetInMatrWeights  
+endm
+
 ; E: fil, col, color
 ; D: pone el numero bl en la matrix, lo unico que valida es que no este fuera de la misma
 PUTINMATRIX macro fil, col, color
@@ -539,6 +546,22 @@ tag:
 
     pop bx
     pop ax
+endm
+
+; el numero que recibe lo convierte a fila columna
+; S: al = fil, ah = colm
+GETNTOFILCOL macro n
+
+    push cx 
+
+    mov ax, n
+    mov cx, 8
+    div cl
+
+    xchg al, ah
+
+    pop cx
+
 endm
 
 ; E: 2 numeros entre 0-7

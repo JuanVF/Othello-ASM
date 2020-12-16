@@ -1,5 +1,5 @@
-include ./code/tareas/num8/macros.ASM
-;include macros.ASM
+;include ./code/tareas/num8/macros.ASM
+include macros.ASM
 
 ; ----------------------------------------------------------
 ; MANDAMIENTOS DE LA PROGRA xD
@@ -51,7 +51,7 @@ datos segment
     header db '   Othello Juego', 0AH, 'Negras     Blancas', 0AH; 36
     fileName db 'log0000.txt', 0 ; nombre del archivo
    
-    stringToWrite db '  n12        b32', 0AH ;  
+    stringToWrite db '  nNN        bNN', 0AH ;  
 
 
     ; Informacion de la UI
@@ -104,7 +104,6 @@ datos segment
 
     homeSelected db 00h
 
-    isIAPlaying db 00h
 
     ; Seleccion de pantalla
     currentStage db STAGE_HOME
@@ -122,20 +121,24 @@ datos segment
     ; 2 - Vacio :c
     Matriz db 64 dup(2)
     Pesos db 64 dup(1)    
+    weight dw 0
 
     amountTokens dw 00h ; Cantidad de fichas (blancos - negros)
 
-    possiblePlays dw 256 dup(00h), 00h ; Array de posibles jugadas
-                                  ; FilCol (byte, byte)
-                                  ; Empieza en 1
-                                  ; byte 0 el largo
-    amountPlays equ byte ptr [possiblePlays]
-    
+    possiblePlays db 257 dup(00h) ; Array de posibles jugadas
+    ; Formato:
+    ;   primer byte: cantidad de posibles jugadas
+    ;   lo otro va en grupos de 4 bytes:
+    ;   1 byte: fila, 2 byte : columna   
+    ;   3 low ,4 heigh byte = weight
+
+
     vel db 1, -1, 1, 0, 1, 1, 0, -1, 0, 1, -1, -1, -1, 0, -1, 1 ; posiciones para moverse en la matriz sin hacer un for doble
 
 
     toPlay dw 00h
     turn dw 0 ; 0 = Blanco, 1 = negro ; 0 = filas, 1 = columnas
+    flagInitGame db 0
 
 datos ends
 
@@ -183,8 +186,33 @@ pDelay endP
 ; D: Este es el procedimiento vacio
 ; N: E
 pInitGame proc
+
+    cmp flagInitGame, 0
+    jne pInitGame_fin
+
+    cmp byte ptr turn, 1
+    jne pInitGame_negro
+    mov byte ptr turn, 0
+    call pWriteString ; ponemos lo negro
+    mov byte ptr turn, 1
+
+pInitGame_negro:
+    mov flagInitGame, 1
+
+pInitGame_fin:
     ret
 pInitGame endP
+
+; E: turn 
+; S: turn
+; D: se salta el turno del jugador actual
+pJumTurn proc
+
+    mov byte ptr [turn+1], 0
+    xor byte ptr [turn], 01h
+
+    ret 
+pJumTurn endp 
 
 ;----------------------------
 ; End Utils
@@ -272,25 +300,26 @@ pPutNumber_fin:
     ret 
 pPutNumber endp  
 
+pF1Pressed proc
+    mov aboutFrom, STAGE_GAME
+    mov currentStage, STAGE_HELP
+    ret
+pF1Pressed endp 
+
+
 ; E: al=ascii, ah=code
 ; D: llama un procedimiento dependiendo de la tecla, sino nada mas retorna
 pSwitchkeys proc 
     
     cmp ah, F1_KEY
-    jne pSwitchkeys_f2
+    CALLIFANDRET je, pF1Pressed
 
-    mov aboutFrom, STAGE_GAME
-    mov currentStage, STAGE_HELP
-
-    jmp pSwitchkeys_noNumero
-pSwitchkeys_f2:
     cmp ah, F2_KEY
-    jne pSwitchkeys_esc
+    CALLIFANDRET je, pMovAI
 
-    mov isIAPlaying, 1
+    cmp ah, F3_KEY
+    CALLIFANDRET je, pJumTurn
 
-    jmp pSwitchkeys_noNumero
-pSwitchkeys_esc:
     cmp ah, 01; ESCP
     CONEJO je fin
 
@@ -355,6 +384,35 @@ getInMatr_fin:
     ret 
 pPutInMatrix endp
 
+; S: al = (0 blanco, 1 negro, 2 vacio)
+pGetInMatrWeights proc 
+
+    push bx
+
+    mov bl, 8
+
+    mov bh, ah ; respaldamos la columna
+    xor ah, ah
+    mul bl ; fil * 8
+
+    add al, bh ; fil * 8 + colum
+    cmp ax, 64
+    jge pGetInMatrWeights_outOfRange
+
+    lea bx, Pesos
+    add bx, ax
+
+    mov al, byte ptr [bx]
+    jmp pGetInMatrWeights_fin
+ 
+pGetInMatrWeights_outOfRange:
+    mov al, 0 
+
+pGetInMatrWeights_fin:
+    pop bx
+
+    ret 
+pGetInMatrWeights endp 
 
 ; E: al = fil, ah = colm
 ; S: al = (0 blanco, 1 negro, 2 vacio)
@@ -387,6 +445,61 @@ pgetInMatr_fin:
 
     ret 
 pGetInMatr endp 
+
+
+; E: al= fil, ah = col, dl = vx, dh = vy, bl = enemigo
+; S: weight con el peso del camino, al= color
+; D: retorna el peso de ese camino 
+pPathAI proc 
+; si la siguiente es un amigo entonces sumamos
+
+    PUSHS<bx, cx, dx, si >
+
+    mov si, ax ; posicion  original
+
+    add al, dh
+    add ah, dl 
+
+    mov cx, ax ; respaldamos ax
+    GETINMATRIX al, ah
+
+    ; 1. si la siguiente es vacio entonces retornamos vacio y no sumamos nada
+    cmp al, 2 ; si es vacio retorna 
+    je pPathAI_fin
+
+    ; 2. si la siguiente es un amigo, entonces sumamos al weight de esta
+    cmp al, bl ; si es vacio retorna 
+    jne pPathAI_friend ; salta si es amigo 
+    
+    ; 3. si es enemigo entonces volvemos a llamar
+    mov ax, cx ; posicion sumada
+    call pPathAI
+
+        ; 4. si retorna un friend, sumamos al weight esta posicion 
+        cmp al,  2
+        je pPathAI_fin ; era vacio
+
+        cmp al,  bl
+        je pPathAI_fin ; era enemigo
+
+pPathAI_friend: ; si encontramos un amigo 
+    ; 1. respaldamos el friend
+    push ax 
+    ; 2. sumamos el weight de esta posicion
+    mov ax, si ; posicion original
+    GETINMATRIXWEIGHTS al, ah ; pedimos el weight de esa posicion
+    xor ah, ah 
+    add word ptr [weight], ax ; sumamos el peso de esta posicion
+
+    ; 3. recuperamos el friend para retornarlo
+    pop ax   
+
+pPathAI_fin: 
+
+    POPS <si, dx, cx, bx>
+
+    ret 
+pPathAI endp 
 
 ; E: al= fil, ah = col, dl = vx, dh = vy, bl = color
 ; S: al con el color
@@ -421,116 +534,208 @@ pPath_fin:
     ret 
 pPath endp 
 
-; E: al= fil, ah = col, dl = vx, dh = vy, bl = color
-; S: al con el color
-; D: comienza a buscar en esa direccion, si se encuentra uno de color bl pinta todo el path
-; N: :C
-pIncPossibleWays proc 
 
-    PUSHS<bx, cx, dx>
+; D: Realiza el movimiento de la AI en el turno actua
+; si no hay movimiento entonces no mueve nada
+; cambia el turno cuando termina
+pMovAI proc 
 
-    add al, dh
-    add ah, dl
+; 1. recorrer toda la matriz
+    mov cx, 64
+    ;mov cx, 38
+pMovAI_loop:
 
-    mov cx, ax ; respaldamos ax
-    GETINMATRIXCUSTOM al, ah, Pesos
-    cmp al, 2 ; si es vacio retorna 
-    je pIncPossibleWays_fin
+; 2. para cada pieza enemiga
 
-    cmp al, bl; si es igual al color retorna el color
-    je pIncPossibleWays_fin
+    dec cx
+    GETNTOFILCOL cx; S: al = fil, ah = colm
+    inc cx
 
-    ; sino:
-    mov ax, cx; recuperamos
-    call pIncPossibleWays
+    push ax ; respaldamos filas 
 
-    cmp al, bl ; si es igual pintamos esa posicion
-    jne pIncPossibleWays_fin   
+    call pGetInMatr; pedimos que esta en la matrix en esa posicion
+    cmp al, 2
+    je pMovAI_vacio
 
-    PUTINMATRIXCUSTOM cl, ch, bl, Pesos  ; si era igual  
+    cmp al, byte ptr turn
+    je pMovAI_vacio ; salta si son iguales 
 
-pIncPossibleWays_fin:
+    ; --- encontramos enemigo ----
+    ; 3. recorremos los lados del enemigo buscando un vacio
+    mov bl, al ; movemos la piesa enemiga
+    pop ax
+    push ax
+    call pAIPutToken
 
-    POPS<dx, cx, bx>
+    
+
+
+pMovAI_vacio:
+    pop ax 
+
+
+    loop pMovAI_loop
+
+
+; ya con los pesos, elegimos alguno 
+    cmp byte ptr possiblePlays, 0
+    je noJugadas
+    ; elegimos cual vamos a jugar
+
+    ;; call laskdjflksjd
+    
+
+; cambio de turno:
+ noJugadas:
+    cmp byte ptr [turn], 0
+    je pMovAI_cambiando1
+    mov byte ptr [turn], 0
+    jmp pMovAI_vacio
+pMovAI_cambiando1:
+    mov byte ptr [turn], 1
+
+    ; hacemos un 
+
     ret 
-pIncPossibleWays endp 
+pMovAI endp 
 
-
-; E: Las jugadas posibles
-; S: N/A
-; D: Limpia el array de jugadas posibles
-pCleanPossiblePlays proc
-    PUSHS <ax, di>
-
-    lea di, possiblePlays
-
-    pCleanPossiblePlays_loop:
-        mov al, 00h
-        mov [di], al
-
-        inc di
-        mov al, [di]
-    JMPIFN al, 00h, pCleanPossiblePlays_loop
-
-    POPS <di, ax>
-
-    ret
-pCleanPossiblePlays endP
-
-; E: al= fil, ah = col, bl = color
-; S: Posibles jugadas en possiblePlays
-; D: Escribe en el array possiblePlays todas las jugadas
-;    posibles   
-pPossiblePlays proc
-    PUSHS <ax, bx, cx, dx, di>
-    lea di, possiblePlays
-    inc di
+; se llama cuando encuentro un espacio en blanco desde un enemigo
+; E: al= fil, ah = col, bl = enemigo posicion vacia al lado del enemigo
+; D: se encarga de agergar el weight al array
+pAILookPath proc 
+    PUSHS <ax, bx, cx, dx, si>
 
     mov cx, 8 ; 8 posiciones a los lados
     lea si, vel
+    mov word ptr weight, 0 ; weight en 0
 
-pPossiblePlays_neighbors:
+pAILookPath_neighbors:
 
     mov dl, byte ptr [si] ; vy
     mov dh, byte ptr [si+1] ; vx
+    inc si 
+    inc si
 
     push ax 
     add al, dh 
     add ah, dl
-    GETINMATRIX al, ah
+    ; ---- recorriendo
+    ; 1. si encontramos enemigo, intentamos recorrer ese path
+    GETINMATRIX al, ah ; pedimos lo que esta en esa posicion
 
-    cmp al, bl  
-    je pPossiblePlays_equals; si lo que esta en ese vecino es igual al color entonces continue
+    cmp al, 2
+    je pAILookPath_vacio
+
+    cmp al, bl
+    jne pAILookPath_vacio ; era amigo
+
+    ; ---- si llega aqui es por que es enemigo
+    pop ax ; sacamos la posicion original
+    push ax
+    call pPathAI ; retorna el cx con el weight de ese camino
+
+    ; ---- recorriendo
+
+pAILookPath_vacio:
     pop ax 
+    loop pAILookPath_neighbors
+
+    ; si cuando termina el weight es 0, no encontr[o path
+    cmp word ptr weight, 0
+    je pAILookPath_no_weight
+
+    call pInsertIntoPlays ; agregamos ese peso a los caminos
+
+pAILookPath_no_weight:
+
+    POPS <si, dx, cx, bx, ax>
+
+    ret 
+pAILookPath endp 
+
+; E: al= fil, ah = col, bl= enemigo
+; D: busca todos los lados de esa posicion por un vacio, si encuentra el vacio pide los pesos
+; de ese path
+pAIPutToken proc 
+    PUSHS <ax, bx, cx, dx, di>
+ 
+ 
+    mov cx, 8 ; 8 posiciones a los lados
+    lea si, vel
+
+pAIPutToken_neighbors:
+
+    mov dl, byte ptr [si] ; vy
+    mov dh, byte ptr [si+1] ; vx
+    inc si 
+    inc si
 
     push ax 
-    call pPath
+    add al, dh 
+    add ah, dl
+    mov di, ax ; respandamos
+
+    cmp al, 7 ; validamos que no se salga de la matriz
+    jg pAIPutToken_no_vacio
+
+    cmp ah, 7
+    jg pAIPutToken_no_vacio
+
+    cmp al, 0 ; validamos que no se salga de la matriz
+    jl pAIPutToken_no_vacio
+
+    cmp ah, 0
+    jl pAIPutToken_no_vacio
+
+    GETINMATRIX al, ah ; pedimos lo que esta en esa posicion
+
+    cmp al, 2
+    jne pAIPutToken_no_vacio
     
-    cmp al, bl
-    jne pPossiblePlays_equals ; si no encontro path entonces continuamos 
+    mov ax, di ; posicion del espacio en blanco
+    call pAILookPath
 
+pAIPutToken_no_vacio:
     pop ax 
-    push ax
+    loop pAIPutToken_neighbors
 
-    ; encontramos path, ponemos esta posicion en jugadas
-    mov byte ptr [di], al
-    mov byte ptr [di+1], ah
-    GETINMATRIXCUSTOM al, ah, pesos
-    mov byte ptr [di+2], al
-
-    add di, 03h
-
-    inc amountPlays
-pPossiblePlays_equals:
-    pop ax 
-
-    inc si
-    inc si
-    loop pPossiblePlays_neighbors
 
     POPS <di, dx, cx, bx, ax>
-    ret
-pPossiblePlays endP
+    ret 
+pAIPutToken endp 
+
+; E: al= fila, ah = col, [weight]
+; D: inserta el [weight], y las cordenadas en el ax, en la lista possiblePlays
+pInsertIntoPlays proc 
+    PUSHS<ax, cx, si>
+ 
+    push ax
+
+    xor ax, ax 
+    mov al, byte ptr [possiblePlays] ; cantidad en el array
+
+    lea si, [possibleplays]
+    inc byte ptr [si] ; lo que vamos a agregar
+    inc si; se salta la cantidad de jugadas en el array
+   
+    mov cx, 4
+    mul cl 
+    
+    add si, ax ; resultado de multiplicacion
+
+    pop ax ; los valores que me pasaron al comienzo
+
+    mov byte ptr [si], al ; fila
+    mov byte ptr [si+1], ah ; columna
+    mov ax, word ptr [weight]
+    mov byte ptr [si+2], al ; weight
+    mov byte ptr [si+3], ah ; weight
+
+    POPS <si, cx, ax>
+
+    ret 
+pInsertIntoPlays endp 
+
 
 ; E: al= fil, ah = col, bl = color
 ; S: di = 0 si no se pudo jugar esa posicion
@@ -1917,9 +2122,6 @@ main:
     PUTINMATRIX 3, 4, 0
 
     call pGraphicMode
-
-    call pPossiblePlays
-
     call pManageStages
 
 fin:
