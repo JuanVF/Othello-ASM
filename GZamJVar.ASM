@@ -1,6 +1,47 @@
 ;include ./code/tareas/num8/macros.ASM
 include macros.ASM
 
+; Autores:
+; Nombre: Vargas-Juan
+; Carne: 2020035292
+; Nombre: Zamora-Gerald
+; Carne: 2020053672
+
+; ------------------------------------------------
+;  Manual de usuario
+; ------------------------------------------------
+
+;Desc: Juego del Othello con IA integrada
+;   -Ayuda-
+;Pantalla Inicio: 
+;   - Esc: salir del juego
+;   - Flecha <-: seleccionar opcion de la izquierda
+;   - Flecha ->: seleccionar opcion de la derecha
+;   - Enter: entra a la opcion seleccionada
+;Pantalla Juego:
+;   - F1 - Entra a esta pantalla de ayuda
+;   - F2 - La IA juega el movimiento actual
+;   - F3 - Salta la jugada
+;   - Esc: salir del juego
+;   - Entrada de juego: digitar numeros (0-7)
+;Pantalla Ayuda:
+;   - Esc: vuelve a la pantalla anterior
+; ------------------------------------------------
+; Sistema ABCD
+; ------------------------------------------------
+
+; Modo grafico: A
+; Dibujar el tablero: A
+; Acerca de: A
+; Iniciar con blanco o negro: A
+; Sigue las reglas del juego: A
+; Muestra una interfaz decente: A
+; Indica quien gano: B
+; La IA es inteligente: B
+
+; Feliz navidad <3
+
+
 ; ----------------------------------------------------------
 ; MANDAMIENTOS DE LA PROGRA xD
 ; ----------------------------------------------------------
@@ -59,8 +100,8 @@ datos segment
     gameTurn    db "Turno de:", 00h
     gameP1      db "blancas",00h
     gameP2      db " negras", 00h
-    gameWAmount db "Negras: 02", 00h ; Empieza en el 8
-    gameBAmount db "Blancas: 02", 00h ; Empieza en el 9
+    gameBAmount db "Negras: 02", 00h ; Empieza en el 8
+    gameWAmount db "Blancas: 02", 00h ; Empieza en el 9
     gamePosTxt  db "Pos: ", 00h
     gamePos     db "  ", 00h
     gameAbout   db "F1:", 00h
@@ -104,6 +145,8 @@ datos segment
 
     homeSelected db 00h
 
+    playsToGetAmount db 00h
+    playsToGet db 257 dup(-1), 00h; xd
 
     ; Seleccion de pantalla
     currentStage db STAGE_HOME
@@ -120,8 +163,11 @@ datos segment
     ; 1 - Blanco
     ; 2 - Vacio :c
     Matriz db 64 dup(2)
-    Pesos db 64 dup(1)    
+    Pesos db 13 , 12 , 12 , 11 , 12 , 12 , 13 , 13 , 12 , 12 , 11 , 11 , 11 , 12 , 12 , 13 , 12 , 11 , 11 , 10 , 11 , 11 , 12 , 12 , 11 , 11 , 10 , 10 , 10 , 11 , 11 , 12 , 12 , 11 , 11 , 10 , 11 , 11 , 12 , 12 , 12 , 12 , 11 , 11 , 11 , 12 , 12 , 13 , 13 , 12 , 12 , 11 , 12 , 12 , 13 , 13 , 13 , 13 , 12 , 12 , 12 , 13 , 13 , 14
     weight dw 0
+
+    totalWithe db 0 ; fichas totales
+    totalBlack db 0
 
     amountTokens dw 00h ; Cantidad de fichas (blancos - negros)
 
@@ -355,6 +401,140 @@ pInput endp
 ; Start Matrix operations
 ;----------------------------
 
+; S: 
+; D: Esto devuelve la jugada de la IA
+pGetIAMove proc
+    PUSHS <bx, cx, dx, di, si>
+
+    lea di, possiblePlays
+    lea si, playsToGet
+
+    inc di
+
+    mov bx, 00h
+
+    pGetIAMove_loop:
+        mov dl, byte ptr [di+2]
+        mov dh, byte ptr [di+3]
+
+        ; Si es menor skipeamos
+        jmpifl dx, bx, pGetIAMove_skip
+
+        ; Si son iguales lo agregamos a la lista
+        jmpifg dx, bx, pGetIAMove_greater
+	pGetIAMove_agregar:
+            push bx
+
+            ; Cargamos la fila y columna
+            mov bl, [di] ; Fila
+            mov [si], bl
+            mov bl, [di+1] ; Columna
+            mov [si+1], bl
+
+            add si, 2
+
+            pop bx
+            ; Incrementamos la cantidad
+            inc playsToGetAmount
+
+            jmp pGetIAMove_skip
+        pGetIAMove_greater:
+        ; Si es mayor borramos la lista
+            lea si, playsToGet
+            ; Este loop es para borrar los datos de
+            ; la lista
+            pGetIAMove_delete:
+                mov al, -1
+                mov [si], al
+
+                inc si
+                mov al, [si]
+            jmpifn al, -1, pGetIAMove_delete
+
+            ; Reseteamos esto
+            mov playsToGetAmount, 00h
+            lea si, playsToGet
+            ; Cargamos el peso mas alto
+            mov bx, dx
+	    jmp pGetIAMove_agregar
+    pGetIAMove_skip:
+    ; Saltamos los 4 bytes
+    add di, 4
+
+    ; Si no es un cero seguimos en el loop
+    mov al, [di]
+    jmpifn al, 00h, pGetIAMove_loop
+
+    ; Elegimos si hay varios
+    lea si, playsToGet
+
+    mov bh, 00h
+    mov bl, playsToGetAmount
+
+    call pGetRandom
+
+    ; Elegimos cual indice
+    clean <dx>
+    mov bx, 02h
+
+    mul bx
+
+    add si, ax
+
+    mov al, [si]
+    mov ah, [si+1]
+
+    ; Reseteamos esto
+    mov playsToGetAmount, 00h
+
+    lea si, playsToGet
+    push ax
+
+    ; Este loop es para borrar los datos de
+    ; la lista
+    pGetIAMove_reset:
+        mov al, -1
+        mov [si], al
+
+        inc si
+        mov al, [si]
+    jmpifn al, -1, pGetIAMove_reset
+
+    pop ax
+
+    POPS <si, di, dx, cx, bx>
+
+    ret
+pGetIAMove endP
+
+
+;E: BX - El Limite superior del rango
+; S: AX - El numero aleatorio
+; D: Retorna un numero aleatorio entre 0-AX
+pGetRandom proc 
+    pushs <bx, dx>
+
+    clean <ax, dx>
+
+    ; Evitamos division por cero
+    jmpif bx, 00h, pGetRandom_skip
+
+    mov ah, 00h
+    int 1ah
+
+    clean <ax>
+
+    mov  ax, dx
+    xor  dx, dx
+    div  bx
+
+    mov ax, dx
+pGetRandom_skip:
+    pops <dx, bx>
+
+    ret
+pGetRandom endP
+
 ; E: al= fil, ah = col, bl = color, di = la matriz
 ; D: pone el numero bl en la matrix, lo unico que valida es que no este fuera de la misma
 pPutInMatrix proc 
@@ -419,6 +599,8 @@ pGetInMatrWeights endp
 ; D: retorna lo que esta en esa posicion, si esta fuera de la matrix entonces retorna vacio
 pGetInMatr proc 
 
+    PUSHS<bx, dx, cx>
+
     push bx
 
     mov bl, 8
@@ -442,6 +624,8 @@ getInMatr_outOfRange:
 
 pgetInMatr_fin:
     pop bx
+
+    POPS<cx, dx, bx>
 
     ret 
 pGetInMatr endp 
@@ -534,7 +718,6 @@ pPath_fin:
     ret 
 pPath endp 
 
-
 ; D: Realiza el movimiento de la AI en el turno actua
 ; si no hay movimiento entonces no mueve nada
 ; cambia el turno cuando termina
@@ -567,9 +750,6 @@ pMovAI_loop:
     push ax
     call pAIPutToken
 
-    
-
-
 pMovAI_vacio:
     pop ax 
 
@@ -582,19 +762,36 @@ pMovAI_vacio:
     je noJugadas
     ; elegimos cual vamos a jugar
 
-    ;; call laskdjflksjd
-    
+    ;call laskdjflksjd
+;AQUI SE LLAMA A ESA VARA
+
+    call pGetIAMove
+    PUTINMATRIXPLAY al, ah, <byte ptr[turn]> ; en la matriz
+    INSERTPLAY al, ah, <byte ptr[turn]> ; en el string
+
+    mov byte ptr [turn+1], 0 ; para que sigan las filas de nuevo 
+    call pWriteString ; lo guardamos en file
+
+    push cx
+    mov cx, 256
+    lea si, possiblePlays
+cleaning:
+    mov byte ptr [si], 0
+    inc si
+    loop cleaning
+    pop cx
 
 ; cambio de turno:
  noJugadas:
     cmp byte ptr [turn], 0
     je pMovAI_cambiando1
     mov byte ptr [turn], 0
-    jmp pMovAI_vacio
+    jmp pMovAI_fin
 pMovAI_cambiando1:
     mov byte ptr [turn], 1
 
-    ; hacemos un 
+
+pMovAI_fin:
 
     ret 
 pMovAI endp 
@@ -1404,6 +1601,47 @@ pDrawBoard proc
     ret
 pDrawBoard endP
 
+
+; actualiza el marcador
+updateTokens proc 
+    pushs <ax, dx, cx>
+
+    ; primero las blancas
+    
+
+    mov al, totalWithe
+    xor ah, ah 
+    mov cx, 10
+    div cl
+
+    add ah, 30h
+    mov byte ptr [gameWAmount+10], ah
+
+    xchg al, ah 
+    add ah, 30h
+    mov byte ptr [gameWAmount+9], ah
+
+    ; negras
+
+    mov al, totalBlack
+    xor ah, ah 
+    mov cx, 10
+    div cl
+
+    add ah, 30h
+    mov byte ptr [gameBAmount+9], ah
+
+    xchg al, ah 
+    add ah, 30h
+    mov byte ptr [gameBAmount+8], ah
+
+    mov byte ptr [totalwithe], 0
+    mov byte ptr [totalblack], 0
+    POPS<cx, dx, ax>
+
+    ret 
+updateTokens endp 
+
 ; E: La matriz
 ; S: N/A
 ; D: Se encarga de dibujar la matriz
@@ -1426,8 +1664,13 @@ pDrawCoins proc
         ; Si es dos no se renderiza nada
         jmpif al, 2, pDrawCoins_coin
         ; si no es 0 movemos el color a negro
+        inc byte ptr [totalBlack]
         jmpif al, 0, pDrawCoins_C_COLOR
             mov C_COLOR, white
+        dec byte ptr [totalBlack]
+        inc byte ptr [totalWithe]
+ 
+            ; blanco
 
         pDrawCoins_C_COLOR:
 
@@ -1517,6 +1760,8 @@ pDrawPositions endP
 pDrawInfo proc
     PUSHS <ax, bx, dx, di>
 
+
+    call updateTokens
     mov bl, white
 
     ; Se dibuja el titulo del juego
